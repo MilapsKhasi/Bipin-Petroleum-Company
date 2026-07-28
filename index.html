@@ -1,0 +1,229 @@
+
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <script>
+      // Fix for read-only window.fetch in some iframe / proxy environments
+      try {
+        let originalFetch = window.fetch;
+        Object.defineProperty(window, 'fetch', {
+          get() {
+            return originalFetch;
+          },
+          set(value) {
+            originalFetch = value;
+          },
+          configurable: true,
+          enumerable: true
+        });
+      } catch (e) {
+        console.warn("Could not patch window.fetch setter:", e);
+      }
+    </script>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <title>Bipin Petroleum Co. - Powered by ZenterPrime</title>
+    <meta name="description" content="Simple cloud-synced purchase and stock management system." />
+    <meta name="theme-color" content="#146daf" />
+    <link rel="manifest" href="/manifest.json" />
+    <script>
+      if ('serviceWorker' in navigator) {
+        window.addEventListener('load', () => {
+          navigator.serviceWorker.register('/sw.js').then((reg) => {
+            console.log('[PWA] ServiceWorker registered with scope:', reg.scope);
+          }).catch((err) => {
+            console.warn('[PWA] ServiceWorker registration failed:', err);
+          });
+        });
+      }
+    </script>
+    
+    <!-- Google Fonts: Geologica & Georama (Geometric Sans Fonts) -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Geologica:wght@300;400;500;600;700&family=Georama:ital,wght@0,300..700;1,300..700&display=swap" rel="stylesheet">
+
+    <!-- Favicon -->
+    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><rect width=%22100%22 height=%22100%22 rx=%2215%22 fill=%22%23146daf%22/><text x=%2250%%22 y=%2252%%22 text-anchor=%22middle%22 dominant-baseline=%22middle%22 fill=%22%23ffffff%22 style=%22font-size:52px;font-weight:800;font-family:sans-serif%22>B</text></svg>">
+
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+      tailwind.config = {
+        darkMode: 'class',
+        theme: {
+          extend: {
+            fontFamily: {
+              sans: ['Geologica', 'Georama', 'Calibri', 'sans-serif'],
+              mono: ['Geologica', 'Georama', 'Calibri', 'sans-serif'],
+              serif: ['Geologica', 'Georama', 'Calibri', 'sans-serif'],
+            },
+            fontSize: {
+              'xs': ['13px', '18px'],
+              'sm': ['14px', '20px'],
+              'base': ['15px', '22px'],
+            },
+            colors: {
+              primary: {
+                DEFAULT: '#146daf',
+                dark: '#0e5287',
+                light: '#e1f0fa'
+              },
+              link: '#2563EB',
+              slate: {
+                50: '#f9f9f9',
+                100: '#F1F5F9',
+                200: '#E2E8F0',
+                300: '#CBD5E1',
+                400: '#94A3B8',
+                500: '#64748B',
+                600: '#475569',
+                700: '#334155',
+                800: '#1E293B',
+                900: '#0F172A',
+                950: '#020617',
+              }
+            },
+            borderRadius: {
+              'none': '0',
+              'sm': '1px',
+              'md': '2px',
+              'lg': '4px',
+              'xl': '6px'
+            }
+          }
+        }
+      }
+    </script>
+
+    <script>
+      // Initial theme setup to avoid FOUC
+      const theme = localStorage.getItem('app_theme') || 'light';
+      if (theme === 'dark') {
+        document.documentElement.classList.add('dark');
+      } else {
+        document.documentElement.classList.remove('dark');
+      }
+    </script>
+
+    <style>
+      body { 
+        font-family: 'Geologica', 'Georama', sans-serif !important; 
+        background-color: #F7F8FC;
+        color: #111827;
+        font-size: 13.5px !important;
+        -webkit-font-smoothing: antialiased;
+      }
+      .dark body {
+        background-color: #020617;
+        color: #f1f5f9;
+      }
+      *, ::before, ::after {
+        font-family: 'Geologica', 'Georama', sans-serif !important;
+        box-shadow: none !important;
+        transition: none !important;
+      }
+      button, input, select, textarea, h1, h2, h3, h4, h5, h6, p, span, div, td, th, pre, code, label, .font-mono, .font-sans, .font-serif {
+        font-family: 'Geologica', 'Georama', sans-serif !important;
+      }
+
+      /* Global Minimum Font Size Rule: Enforce at least 13px - 14px */
+      .text-\[10px\], .text-\[11px\], .text-\[12px\], .text-xs,
+      [class*="text-[10px]"], [class*="text-[11px]"], [class*="text-[12px]"], [class*="text-[9pt]"] {
+        font-size: 13px !important;
+      }
+      
+      ::-webkit-scrollbar {
+        width: 4px;
+        height: 4px;
+      }
+      ::-webkit-scrollbar-track {
+        background: transparent;
+      }
+      ::-webkit-scrollbar-thumb {
+        background: #CBD5E1;
+        border-radius: 10px;
+      }
+      .dark ::-webkit-scrollbar-thumb {
+        background: #334155;
+      }
+      
+      html, body, #root {
+        height: 100%;
+        margin: 0;
+        padding: 0;
+      }
+
+      .clean-table {
+        width: 100%;
+        border-collapse: collapse;
+        background: white;
+      }
+      .dark .clean-table {
+        background: #0F172A;
+      }
+      .clean-table th {
+        background-color: #f1f5f9;
+        color: #475569;
+        font-weight: 600;
+        font-size: 13px !important;
+        text-transform: uppercase;
+        padding: 10px 14px;
+        border: 1px solid #e2e8f0;
+        text-align: left;
+      }
+      .dark .clean-table th {
+        background-color: #1e293b;
+        color: #94a3b8;
+        border-color: #334155;
+      }
+      .clean-table td {
+        padding: 10px 14px;
+        border: 1px solid #e2e8f0;
+        color: #334155;
+        font-size: 13.5px !important;
+      }
+      .dark .clean-table td {
+        border-color: #334155;
+        color: #cbd5e1;
+      }
+      .clean-table tr:hover td {
+        background-color: #f7f8fc;
+      }
+      .dark .clean-table tr:hover td {
+        background-color: #1e293b;
+      }
+
+      input, select, textarea {
+        border-radius: 2px !important;
+        font-size: 13.5px !important;
+      }
+
+      @media print {
+        @page {
+          size: A4 portrait;
+          margin: 1cm;
+        }
+        header, aside, .print\:hidden, nav, button {
+          display: none !important;
+        }
+        main {
+          padding: 0 !important;
+          margin: 0 !important;
+          width: 100% !important;
+        }
+        .clean-table {
+          font-size: 11pt !important;
+          border: 1px solid #000 !important;
+        }
+        .clean-table td, .clean-table th {
+          border: 1px solid #000 !important;
+          font-size: 11pt !important;
+        }
+      }
+    </style>
+</head>
+  <body class="dark:bg-slate-950 dark:text-slate-100">
+    <div id="root"></div>
+    <script type="module" src="/index.tsx"></script>
+  </body>
+</html>
