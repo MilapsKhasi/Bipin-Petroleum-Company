@@ -214,9 +214,9 @@ const BulkEditModal: React.FC<BulkEditModalProps> = ({ isOpen, onClose, title, c
                                             onBlur={handleBlur}
                                             className="w-full h-full px-2 py-2 text-sm bg-transparent outline-none focus:bg-yellow-50 dark:focus:bg-yellow-900/20 focus:ring-2 focus:ring-inset focus:ring-yellow-500/50 cursor-pointer text-slate-900 dark:text-white"
                                         >
-                                            <option value="" className="dark:bg-slate-900">Select...</option>
+                                            <option value="" className="bg-white dark:bg-slate-900 text-slate-900 dark:text-white">Select...</option>
                                             {col.options?.map(opt => (
-                                                <option key={opt} value={opt} className="dark:bg-slate-900">{opt}</option>
+                                                <option key={opt} value={opt} className="bg-white dark:bg-slate-900 text-slate-900 dark:text-white">{opt}</option>
                                             ))}
                                         </select>
                                     ) : (

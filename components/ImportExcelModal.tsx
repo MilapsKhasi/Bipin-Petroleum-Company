@@ -1119,7 +1119,7 @@ export const ImportExcelModal: React.FC<ImportExcelModalProps> = ({ isOpen, onCl
                                       className="w-full mt-1 p-1.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded outline-none text-xs text-slate-900 dark:text-slate-100 font-medium"
                                     >
                                       {item.matchingSystemEntries.map((sys: any) => (
-                                        <option key={sys.id} value={sys.id}>
+                                        <option key={sys.id} value={sys.id} className="bg-white dark:bg-slate-800 text-slate-900 dark:text-white">
                                           {sys.name} {sys.phone ? `(${sys.phone})` : ''} {sys.sku ? `[SKU: ${sys.sku}]` : ''} [ID: {String(sys.id).substring(0, 8)}]
                                         </option>
                                       ))}

@@ -129,40 +129,40 @@ const AdditionalCharges = () => {
 
       {isModalOpen && (
         <div className="fixed inset-0 z-[500] flex items-center justify-center p-4">
-            <div className="absolute inset-0 bg-slate-900/30" onClick={() => setIsModalOpen(false)} />
-            <div className="relative bg-white w-full max-w-[650px] border border-slate-300 overflow-hidden rounded-md flex flex-col max-h-[90vh]">
-                <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200 bg-white shrink-0">
-                    <h2 className="text-[18px] font-medium text-slate-900 capitalize">{editingTax ? "Edit Charge/Deduction" : "Create New Charge/Deduction"}</h2>
-                    <button onClick={() => setIsModalOpen(false)} className="text-slate-400 hover:text-slate-600 transition-none">
+            <div className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm" onClick={() => setIsModalOpen(false)} />
+            <div className="relative bg-white dark:bg-slate-900 w-full max-w-[650px] border border-slate-300 dark:border-slate-800 overflow-hidden rounded-md flex flex-col max-h-[90vh]">
+                <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shrink-0">
+                    <h2 className="text-[18px] font-medium text-slate-900 dark:text-white capitalize">{editingTax ? "Edit Charge/Deduction" : "Create New Charge/Deduction"}</h2>
+                    <button onClick={() => setIsModalOpen(false)} className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition-none">
                         <X className="w-5 h-5" />
                     </button>
                 </div>
 
-                <form onSubmit={handleSubmit} className="flex-1 flex flex-col overflow-hidden bg-white">
-                    <div className="flex-1 overflow-y-auto p-4 sm:p-8 space-y-6 bg-white custom-scrollbar">
-                        <div className="border border-slate-200 rounded-md p-4 sm:p-8 space-y-6 bg-white">
+                <form onSubmit={handleSubmit} className="flex-1 flex flex-col overflow-hidden bg-white dark:bg-slate-900">
+                    <div className="flex-1 overflow-y-auto p-4 sm:p-8 space-y-6 bg-white dark:bg-slate-900 custom-scrollbar">
+                        <div className="border border-slate-200 dark:border-slate-800 rounded-md p-4 sm:p-8 space-y-6 bg-white dark:bg-slate-900">
                             <div className="space-y-1.5">
-                                <label className="text-[14px] font-medium text-slate-900 capitalize">Charge/Deduction Name</label>
-                                <input required value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} className="w-full px-4 py-2 border border-slate-200 rounded outline-none text-[14px] focus:border-slate-400 bg-white" placeholder="Freight, Labour, Discount, etc..." />
+                                <label className="text-[14px] font-medium text-slate-900 dark:text-slate-200 capitalize">Charge/Deduction Name</label>
+                                <input required value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} className="w-full px-4 py-2 border border-slate-200 dark:border-slate-700 rounded outline-none text-[14px] focus:border-slate-400 dark:focus:border-slate-500 bg-white dark:bg-slate-800 text-slate-900 dark:text-white" placeholder="Freight, Labour, Discount, etc..." />
                             </div>
 
                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
                                 <div className="space-y-1.5">
-                                    <label className="text-[14px] font-medium text-slate-900 capitalize">Type</label>
+                                    <label className="text-[14px] font-medium text-slate-900 dark:text-slate-200 capitalize">Type</label>
                                     <div className="relative">
-                                        <select value={formData.type} onChange={e => setFormData({...formData, type: e.target.value})} className="w-full h-10 px-4 py-2 border border-slate-200 rounded outline-none text-[14px] focus:border-slate-400 bg-white appearance-none">
-                                            <option value="Charge">Charge (+)</option>
-                                            <option value="Deduction">Deduction (-)</option>
+                                        <select value={formData.type} onChange={e => setFormData({...formData, type: e.target.value})} className="w-full h-10 px-4 py-2 border border-slate-200 dark:border-slate-700 rounded outline-none text-[14px] focus:border-slate-400 dark:focus:border-slate-500 bg-white dark:bg-slate-800 text-slate-900 dark:text-white appearance-none">
+                                            <option value="Charge" className="bg-white dark:bg-slate-800 text-slate-900 dark:text-white">Charge (+)</option>
+                                            <option value="Deduction" className="bg-white dark:bg-slate-800 text-slate-900 dark:text-white">Deduction (-)</option>
                                         </select>
                                         <ChevronDown className="w-4 h-4 absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
                                     </div>
                                 </div>
                                 <div className="space-y-1.5">
-                                    <label className="text-[14px] font-medium text-slate-900 capitalize">Calculation At</label>
+                                    <label className="text-[14px] font-medium text-slate-900 dark:text-slate-200 capitalize">Calculation At</label>
                                     <div className="relative">
-                                        <select value={formData.calc_method} onChange={e => setFormData({...formData, calc_method: e.target.value})} className="w-full h-10 px-4 py-2 border border-slate-200 rounded outline-none text-[14px] focus:border-slate-400 bg-white appearance-none">
-                                            <option value="Percentage">Percentage</option>
-                                            <option value="Fixed">Fixed Amount</option>
+                                        <select value={formData.calc_method} onChange={e => setFormData({...formData, calc_method: e.target.value})} className="w-full h-10 px-4 py-2 border border-slate-200 dark:border-slate-700 rounded outline-none text-[14px] focus:border-slate-400 dark:focus:border-slate-500 bg-white dark:bg-slate-800 text-slate-900 dark:text-white appearance-none">
+                                            <option value="Percentage" className="bg-white dark:bg-slate-800 text-slate-900 dark:text-white">Percentage</option>
+                                            <option value="Fixed" className="bg-white dark:bg-slate-800 text-slate-900 dark:text-white">Fixed Amount</option>
                                         </select>
                                         <ChevronDown className="w-4 h-4 absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
                                     </div>
@@ -170,25 +170,25 @@ const AdditionalCharges = () => {
                             </div>
 
                             <div className="space-y-1.5">
-                                <label className="text-[14px] font-medium text-slate-900 capitalize">Applicable To</label>
+                                <label className="text-[14px] font-medium text-slate-900 dark:text-slate-200 capitalize">Applicable To</label>
                                 <div className="relative">
-                                    <select value={formData.applicable_to || 'Both'} onChange={e => setFormData({...formData, applicable_to: e.target.value})} className="w-full h-10 px-4 py-2 border border-slate-200 rounded outline-none text-[14px] focus:border-slate-400 bg-white appearance-none">
-                                        <option value="Both">Both (Sales & Purchase)</option>
-                                        <option value="Sales Invoices">Sales Invoices</option>
-                                        <option value="Purchase Bills">Purchase Bills</option>
+                                    <select value={formData.applicable_to || 'Both'} onChange={e => setFormData({...formData, applicable_to: e.target.value})} className="w-full h-10 px-4 py-2 border border-slate-200 dark:border-slate-700 rounded outline-none text-[14px] focus:border-slate-400 dark:focus:border-slate-500 bg-white dark:bg-slate-800 text-slate-900 dark:text-white appearance-none">
+                                        <option value="Both" className="bg-white dark:bg-slate-800 text-slate-900 dark:text-white">Both (Sales & Purchase)</option>
+                                        <option value="Sales Invoices" className="bg-white dark:bg-slate-800 text-slate-900 dark:text-white">Sales Invoices</option>
+                                        <option value="Purchase Bills" className="bg-white dark:bg-slate-800 text-slate-900 dark:text-white">Purchase Bills</option>
                                     </select>
                                     <ChevronDown className="w-4 h-4 absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
                                 </div>
                             </div>
 
                             <div className="space-y-1.5">
-                                <label className="text-[14px] font-medium text-slate-900 capitalize">Default Value</label>
-                                <input type="number" step="0.01" value={formData.calc_method === 'Percentage' ? formData.rate : formData.fixed_amount} onChange={e => setFormData({...formData, [formData.calc_method === 'Percentage' ? 'rate' : 'fixed_amount']: parseFloat(e.target.value) || 0})} className="w-full px-4 py-2 border border-slate-200 rounded outline-none text-[14px] focus:border-slate-400 bg-white font-mono" placeholder="0.00" />
+                                <label className="text-[14px] font-medium text-slate-900 dark:text-slate-200 capitalize">Default Value</label>
+                                <input type="number" step="0.01" value={formData.calc_method === 'Percentage' ? formData.rate : formData.fixed_amount} onChange={e => setFormData({...formData, [formData.calc_method === 'Percentage' ? 'rate' : 'fixed_amount']: parseFloat(e.target.value) || 0})} className="w-full px-4 py-2 border border-slate-200 dark:border-slate-700 rounded outline-none text-[14px] focus:border-slate-400 dark:focus:border-slate-500 bg-white dark:bg-slate-800 text-slate-900 dark:text-white font-mono" placeholder="0.00" />
                             </div>
                         </div>
                     </div>
 
-                    <div className="px-4 sm:px-8 py-4 border-t border-slate-200 flex flex-col sm:flex-row items-center justify-end gap-4 bg-white shrink-0">
+                    <div className="px-4 sm:px-8 py-4 border-t border-slate-200 dark:border-slate-800 flex flex-col sm:flex-row items-center justify-end gap-4 bg-white dark:bg-slate-900 shrink-0">
                         <button type="button" onClick={() => setIsModalOpen(false)} className="text-[13px] text-slate-500 hover:text-slate-800 transition-none font-medium capitalize w-full sm:w-auto">Discard</button>
                         <button 
                             type="submit"

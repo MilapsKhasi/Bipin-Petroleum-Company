@@ -140,7 +140,7 @@ const StockForm: React.FC<StockFormProps> = ({ initialData, onSubmit, onCancel, 
                                 onChange={(e) => handleInputChange('unit', e.target.value)} 
                                 className="w-full px-4 py-2 border border-slate-200 dark:border-slate-700 dark:bg-slate-800 rounded outline-none text-sm bg-white dark:bg-slate-800 appearance-none focus:border-slate-400 dark:focus:border-slate-600 dark:text-slate-100"
                             >
-                                {['PCS', 'NOS', 'KGS', 'LTR', 'BAGS', 'BOX', 'DRUMS', 'PACKS'].map(u => <option key={u} value={u}>{u}</option>)}
+                                {['PCS', 'NOS', 'KGS', 'LTR', 'BAGS', 'BOX', 'DRUMS', 'PACKS'].map(u => <option key={u} value={u} className="bg-white dark:bg-slate-800 text-slate-900 dark:text-white">{u}</option>)}
                             </select>
                             <Box className="w-4 h-4 absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 dark:text-slate-500 pointer-events-none" />
                         </div>
@@ -186,7 +186,7 @@ const StockForm: React.FC<StockFormProps> = ({ initialData, onSubmit, onCancel, 
                             onChange={(e) => handleInputChange('tax_rate', Number(e.target.value))} 
                             className="w-full px-4 py-3 border border-slate-200 dark:border-slate-700 rounded outline-none text-lg font-bold text-slate-900 dark:text-white bg-white dark:bg-slate-800 appearance-none"
                         >
-                            {TAX_RATES.map(r => <option key={r} value={r}>{r}% GST</option>)}
+                            {TAX_RATES.map(r => <option key={r} value={r} className="bg-white dark:bg-slate-800 text-slate-900 dark:text-white">{r}% GST</option>)}
                         </select>
                     </div>
                 </div>

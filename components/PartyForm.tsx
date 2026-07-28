@@ -153,9 +153,9 @@ const PartyForm: React.FC<PartyFormProps> = ({ initialData, prefilledName, defau
                         onChange={e => handleTypeChange(e.target.value as 'customer' | 'vendor' | 'both')}
                         className="w-full h-10 px-3 border border-slate-200 dark:border-slate-700 rounded outline-none text-[14px] focus:border-slate-400 dark:focus:border-slate-600 bg-white dark:bg-slate-800 text-slate-900 dark:text-white font-medium"
                       >
-                        <option value="customer">Customer</option>
-                        <option value="vendor">Vendor</option>
-                        <option value="both">Both (Customer & Vendor)</option>
+                        <option value="customer" className="bg-white dark:bg-slate-800 text-slate-900 dark:text-white">Customer</option>
+                        <option value="vendor" className="bg-white dark:bg-slate-800 text-slate-900 dark:text-white">Vendor</option>
+                        <option value="both" className="bg-white dark:bg-slate-800 text-slate-900 dark:text-white">Both (Customer & Vendor)</option>
                       </select>
                   </div>
               </div>

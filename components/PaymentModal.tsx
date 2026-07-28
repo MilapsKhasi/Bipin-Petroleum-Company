@@ -164,12 +164,12 @@ const PaymentModal: React.FC<PaymentModalProps> = ({ isOpen, onClose, onSubmit, 
                       onChange={e => updatePayment(p.id, 'method', e.target.value)}
                       className="w-full px-3 py-2 border border-slate-200 dark:border-slate-700 dark:bg-slate-800 dark:text-white rounded-lg outline-none text-xs appearance-none cursor-pointer focus:ring-2 focus:ring-primary/20 transition-all"
                     >
-                      <option value="Cash">Cash</option>
-                      <option value="Bank Transfer">Bank Transfer</option>
-                      <option value="Cheque">Cheque</option>
-                      <option value="UPI">UPI</option>
-                      <option value="Credit Card">Credit Card</option>
-                      <option value="Other">Other</option>
+                      <option value="Cash" className="bg-white dark:bg-slate-800 text-slate-900 dark:text-white">Cash</option>
+                      <option value="Bank Transfer" className="bg-white dark:bg-slate-800 text-slate-900 dark:text-white">Bank Transfer</option>
+                      <option value="Cheque" className="bg-white dark:bg-slate-800 text-slate-900 dark:text-white">Cheque</option>
+                      <option value="UPI" className="bg-white dark:bg-slate-800 text-slate-900 dark:text-white">UPI</option>
+                      <option value="Credit Card" className="bg-white dark:bg-slate-800 text-slate-900 dark:text-white">Credit Card</option>
+                      <option value="Other" className="bg-white dark:bg-slate-800 text-slate-900 dark:text-white">Other</option>
                     </select>
                   </div>
 

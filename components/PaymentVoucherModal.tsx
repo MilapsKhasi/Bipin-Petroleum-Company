@@ -363,11 +363,11 @@ export const PaymentVoucherModal: React.FC<PaymentVoucherModalProps> = ({
               onChange={(e) => setPartyName(e.target.value)}
               className="w-full px-3 py-2 border border-slate-200 dark:border-slate-700 dark:bg-slate-800 dark:text-white rounded-lg outline-none text-xs focus:ring-2 focus:ring-primary/20 transition-all"
             >
-              <option value="">Select Party</option>
+              <option value="" className="bg-white dark:bg-slate-800 text-slate-900 dark:text-white">Select Party</option>
               {voucherType === 'Receipt' ? (
-                customers.map(c => <option key={c.id} value={c.name}>{c.name} {c.balance ? `(Bal: ${formatCurrency(c.balance)})` : ''}</option>)
+                customers.map(c => <option key={c.id} value={c.name} className="bg-white dark:bg-slate-800 text-slate-900 dark:text-white">{c.name} {c.balance ? `(Bal: ${formatCurrency(c.balance)})` : ''}</option>)
               ) : (
-                vendors.map(v => <option key={v.id} value={v.name}>{v.name} {v.balance ? `(Bal: ${formatCurrency(v.balance)})` : ''}</option>)
+                vendors.map(v => <option key={v.id} value={v.name} className="bg-white dark:bg-slate-800 text-slate-900 dark:text-white">{v.name} {v.balance ? `(Bal: ${formatCurrency(v.balance)})` : ''}</option>)
               )}
             </select>
           </div>

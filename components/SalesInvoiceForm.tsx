@@ -513,8 +513,8 @@ const SalesInvoiceForm: React.FC<SalesInvoiceFormProps> = ({ initialData, onSubm
                         }} 
                         className="w-full px-4 py-2 border border-slate-200 dark:border-slate-700 dark:bg-slate-800 dark:text-white rounded outline-none text-[14px] appearance-none cursor-pointer bg-white dark:bg-slate-800"
                       >
-                        <option value="Intra-State">Intra-State (CGST + SGST)</option>
-                        <option value="Inter-State">Inter-State (IGST)</option>
+                        <option value="Intra-State" className="bg-white dark:bg-slate-800 text-slate-900 dark:text-white">Intra-State (CGST + SGST)</option>
+                        <option value="Inter-State" className="bg-white dark:bg-slate-800 text-slate-900 dark:text-white">Inter-State (IGST)</option>
                       </select>
                       <ChevronDown className="w-4 h-4 absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
                     </div>
@@ -570,8 +570,8 @@ const SalesInvoiceForm: React.FC<SalesInvoiceFormProps> = ({ initialData, onSubm
                                         <div className="flex items-center h-10">
                                             <input type="text" value={toDisplayValue(it.discount)} onChange={e => updateItemRow(idx, 'discount', e.target.value)} className="w-1/2 h-full px-2 text-right outline-none bg-transparent dark:text-white border-r border-slate-100 dark:border-slate-800" />
                                             <select value={it.discount_type} onChange={e => updateItemRow(idx, 'discount_type', e.target.value)} className="w-1/2 h-full px-1 outline-none bg-transparent dark:text-white text-[10px] font-bold">
-                                                <option value="Percentage">%</option>
-                                                <option value="Amount">₹</option>
+                                                <option value="Percentage" className="bg-white dark:bg-slate-800 text-slate-900 dark:text-white">%</option>
+                                                <option value="Amount" className="bg-white dark:bg-slate-800 text-slate-900 dark:text-white">₹</option>
                                             </select>
                                         </div>
                                         {discVal > 0 && (
@@ -583,7 +583,11 @@ const SalesInvoiceForm: React.FC<SalesInvoiceFormProps> = ({ initialData, onSubm
                                     {isGstEnabled && appSettings.gstEnabled && (
                                         <td className="p-0 border-r border-slate-100 dark:border-slate-800 text-center">
                                             <select value={it.tax_rate} onChange={e => updateItemRow(idx, 'tax_rate', e.target.value)} className="w-full h-10 px-2 outline-none bg-transparent dark:text-white appearance-none text-center cursor-pointer">
-                                                <option value="0">0%</option><option value="5">5%</option><option value="12">12%</option><option value="18">18%</option><option value="28">28%</option>
+                                                <option value="0" className="bg-white dark:bg-slate-800 text-slate-900 dark:text-white">0%</option>
+                                                <option value="5" className="bg-white dark:bg-slate-800 text-slate-900 dark:text-white">5%</option>
+                                                <option value="12" className="bg-white dark:bg-slate-800 text-slate-900 dark:text-white">12%</option>
+                                                <option value="18" className="bg-white dark:bg-slate-800 text-slate-900 dark:text-white">18%</option>
+                                                <option value="28" className="bg-white dark:bg-slate-800 text-slate-900 dark:text-white">28%</option>
                                             </select>
                                         </td>
                                     )}

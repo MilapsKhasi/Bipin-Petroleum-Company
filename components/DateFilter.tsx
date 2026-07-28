@@ -93,11 +93,15 @@ const DateFilter = forwardRef<DateFilterHandle, DateFilterProps>(({ onFilterChan
           ref={yearRef}
           value={selectedYear}
           onChange={(e) => setSelectedYear(e.target.value)}
-          className="appearance-none bg-white border border-slate-200 rounded-md py-2 pl-4 pr-10 text-xs font-normal text-slate-700 hover:bg-slate-50 cursor-pointer outline-none min-w-[110px] focus:border-primary focus:ring-1 focus:ring-primary"
+          className="appearance-none bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-md py-2 pl-4 pr-10 text-xs font-normal text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700 cursor-pointer outline-none min-w-[110px] focus:border-primary focus:ring-1 focus:ring-primary"
         >
-          {years.map((opt: string) => <option key={opt} value={opt}>{opt}</option>)}
+          {years.map((opt: string) => (
+            <option key={opt} value={opt} className="bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100">
+              {opt}
+            </option>
+          ))}
         </select>
-        <ChevronDown className="w-3 h-3 absolute right-3 top-1/2 transform -translate-y-1/2 text-slate-400 pointer-events-none" />
+        <ChevronDown className="w-3 h-3 absolute right-3 top-1/2 transform -translate-y-1/2 text-slate-400 dark:text-slate-500 pointer-events-none" />
       </div>
 
       <div className="relative">
@@ -105,11 +109,15 @@ const DateFilter = forwardRef<DateFilterHandle, DateFilterProps>(({ onFilterChan
           ref={monthRef}
           value={selectedMonth}
           onChange={(e) => setSelectedMonth(e.target.value)}
-          className="appearance-none bg-white border border-slate-200 rounded-md py-2 pl-4 pr-10 text-xs font-normal text-slate-700 hover:bg-slate-50 cursor-pointer outline-none min-w-[110px] focus:border-primary focus:ring-1 focus:ring-primary"
+          className="appearance-none bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-md py-2 pl-4 pr-10 text-xs font-normal text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700 cursor-pointer outline-none min-w-[110px] focus:border-primary focus:ring-1 focus:ring-primary"
         >
-          {months.map((opt: string) => <option key={opt} value={opt}>{opt}</option>)}
+          {months.map((opt: string) => (
+            <option key={opt} value={opt} className="bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100">
+              {opt}
+            </option>
+          ))}
         </select>
-        <ChevronDown className="w-3 h-3 absolute right-3 top-1/2 transform -translate-y-1/2 text-slate-400 pointer-events-none" />
+        <ChevronDown className="w-3 h-3 absolute right-3 top-1/2 transform -translate-y-1/2 text-slate-400 dark:text-slate-500 pointer-events-none" />
       </div>
     </div>
   );
