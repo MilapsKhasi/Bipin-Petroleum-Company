@@ -15,7 +15,17 @@ const Reports = () => {
   const [isExportModalOpen, setIsExportModalOpen] = useState(false);
   const [companyInfo, setCompanyInfo] = useState<any>(null);
 
-  const tabs = ['Purchases', 'Sales Register', 'Vendors Summary', 'Customers Summary', 'Gst Summary'];
+  const tabs = [
+    'Purchases', 
+    'Sales Register', 
+    'Vendors Summary', 
+    'Customers Summary', 
+    'GST Summary',
+    'GSTR-1',
+    'GSTR-2A',
+    'GSTR-2B',
+    'GSTR-3B'
+  ];
 
   const loadData = async () => {
     setLoading(true);
@@ -75,6 +85,27 @@ const Reports = () => {
       })
     ];
 
+    const getBillGstBreakdown = (bill: any) => {
+      const totalGst = Number(bill.total_gst || 0);
+      const gstType = bill.gst_type || bill.items_raw?.gst_type || 'Intra-State';
+      
+      let cgst = Number(bill.cgst || 0);
+      let sgst = Number(bill.sgst || 0);
+      let igst = Number(bill.igst || 0);
+
+      if (cgst === 0 && sgst === 0 && igst === 0 && totalGst > 0) {
+        if (gstType === 'Inter-State' || gstType === 'IGST') {
+          igst = totalGst;
+        } else {
+          cgst = totalGst / 2;
+          sgst = totalGst / 2;
+        }
+      }
+      return { cgst, sgst, igst, totalGst, gstType };
+    };
+
+    const isGstTab = activeTab.startsWith('GST') || activeTab.startsWith('GSTR') || activeTab === 'Gst Summary';
+
     const filterFn = (item: any) => {
         if (dateRange.startDate && dateRange.endDate) {
           const bDate = new Date(item.date);
@@ -83,8 +114,16 @@ const Reports = () => {
           if (bDate < start || bDate > end) return false;
         }
 
+        if (isGstTab) {
+          const search = searchQuery.toLowerCase();
+          if (!search) return true;
+          const partyName = item.vendor_name || item.customer_name || '';
+          const gstin = item.gstin || item.items_raw?.gstin || '';
+          const docNo = item.bill_number || item.invoice_number || '';
+          return docNo.toLowerCase().includes(search) || partyName.toLowerCase().includes(search) || gstin.toLowerCase().includes(search);
+        }
+
         const typeFilter = activeTab === 'Purchases' || activeTab === 'Vendors Summary' ? 'Purchase' : 'Sale';
-        if (activeTab === 'Gst Summary') return true;
         if (item.type !== typeFilter) return false;
         
         const search = searchQuery.toLowerCase();
@@ -104,6 +143,25 @@ const Reports = () => {
 
   const reportTableData = useMemo(() => {
     if (!bills || bills.length === 0) return [];
+
+    const getBillGstBreakdown = (bill: any) => {
+      const totalGst = Number(bill.total_gst || 0);
+      const gstType = bill.gst_type || bill.items_raw?.gst_type || 'Intra-State';
+      
+      let cgst = Number(bill.cgst || 0);
+      let sgst = Number(bill.sgst || 0);
+      let igst = Number(bill.igst || 0);
+
+      if (cgst === 0 && sgst === 0 && igst === 0 && totalGst > 0) {
+        if (gstType === 'Inter-State' || gstType === 'IGST') {
+          igst = totalGst;
+        } else {
+          cgst = totalGst / 2;
+          sgst = totalGst / 2;
+        }
+      }
+      return { cgst, sgst, igst, totalGst, gstType };
+    };
 
     if (activeTab === 'Purchases' || activeTab === 'Sales Register') {
       return bills.map(doc => ({
@@ -135,6 +193,165 @@ const Reports = () => {
         "Gst": Number(v["Gst"]).toFixed(2),
         "Grand Total": Number(v["Grand Total"]).toFixed(2)
       }));
+    }
+
+    if (activeTab === 'GST Summary' || activeTab === 'Gst Summary') {
+      const salesBills = bills.filter(b => b.type === 'Sale');
+      const purchaseBills = bills.filter(b => b.type === 'Purchase');
+
+      let salesTaxable = 0, salesCgst = 0, salesSgst = 0, salesIgst = 0, salesTotalGst = 0;
+      salesBills.forEach(b => {
+        salesTaxable += Number(b.total_without_gst || 0);
+        const { cgst, sgst, igst, totalGst } = getBillGstBreakdown(b);
+        salesCgst += cgst; salesSgst += sgst; salesIgst += igst; salesTotalGst += totalGst;
+      });
+
+      let purchaseTaxable = 0, purchaseCgst = 0, purchaseSgst = 0, purchaseIgst = 0, purchaseTotalGst = 0;
+      purchaseBills.forEach(b => {
+        purchaseTaxable += Number(b.total_without_gst || 0);
+        const { cgst, sgst, igst, totalGst } = getBillGstBreakdown(b);
+        purchaseCgst += cgst; purchaseSgst += sgst; purchaseIgst += igst; purchaseTotalGst += totalGst;
+      });
+
+      return [
+        {
+          "Supply Category": "Outward Supplies (Output Tax - Sales)",
+          "Taxable Value": salesTaxable.toFixed(2),
+          "CGST": salesCgst.toFixed(2),
+          "SGST": salesSgst.toFixed(2),
+          "IGST": salesIgst.toFixed(2),
+          "Total Tax": salesTotalGst.toFixed(2)
+        },
+        {
+          "Supply Category": "Inward Supplies (Input Tax - Purchases)",
+          "Taxable Value": purchaseTaxable.toFixed(2),
+          "CGST": purchaseCgst.toFixed(2),
+          "SGST": purchaseSgst.toFixed(2),
+          "IGST": purchaseIgst.toFixed(2),
+          "Total Tax": purchaseTotalGst.toFixed(2)
+        },
+        {
+          "Supply Category": "Net Tax Liability / (Excess Credit)",
+          "Taxable Value": (salesTaxable - purchaseTaxable).toFixed(2),
+          "CGST": (salesCgst - purchaseCgst).toFixed(2),
+          "SGST": (salesSgst - purchaseSgst).toFixed(2),
+          "IGST": (salesIgst - purchaseIgst).toFixed(2),
+          "Total Tax": (salesTotalGst - purchaseTotalGst).toFixed(2)
+        }
+      ];
+    }
+
+    if (activeTab === 'GSTR-1') {
+      const salesBills = bills.filter(b => b.type === 'Sale');
+      return salesBills.map(doc => {
+        const { cgst, sgst, igst, totalGst, gstType } = getBillGstBreakdown(doc);
+        return {
+          "Date": formatDate(doc.date),
+          "Invoice No": doc.invoice_number || doc.bill_number,
+          "Customer Name": doc.customer_name || 'Cash Customer',
+          "GSTIN": doc.gstin || doc.items_raw?.gstin || 'URP',
+          "Supply Type": gstType,
+          "Taxable Value": (Number(doc.total_without_gst) || 0).toFixed(2),
+          "CGST Amount": cgst.toFixed(2),
+          "SGST Amount": sgst.toFixed(2),
+          "IGST Amount": igst.toFixed(2),
+          "Total GST": totalGst.toFixed(2),
+          "Invoice Value": (Number(doc.grand_total) || 0).toFixed(2)
+        };
+      });
+    }
+
+    if (activeTab === 'GSTR-2A') {
+      const purchaseBills = bills.filter(b => b.type === 'Purchase');
+      return purchaseBills.map(doc => {
+        const { cgst, sgst, igst, totalGst, gstType } = getBillGstBreakdown(doc);
+        return {
+          "Date": formatDate(doc.date),
+          "Supplier Bill No": doc.bill_number || doc.invoice_number,
+          "Vendor Name": doc.vendor_name || 'Unregistered Vendor',
+          "Supplier GSTIN": doc.gstin || doc.items_raw?.gstin || 'URP',
+          "Supply Type": gstType,
+          "Taxable Value": (Number(doc.total_without_gst) || 0).toFixed(2),
+          "CGST": cgst.toFixed(2),
+          "SGST": sgst.toFixed(2),
+          "IGST": igst.toFixed(2),
+          "Total GST": totalGst.toFixed(2),
+          "Bill Value": (Number(doc.grand_total) || 0).toFixed(2)
+        };
+      });
+    }
+
+    if (activeTab === 'GSTR-2B') {
+      const purchaseBills = bills.filter(b => b.type === 'Purchase');
+      return purchaseBills.map(doc => {
+        const { cgst, sgst, igst, totalGst } = getBillGstBreakdown(doc);
+        return {
+          "Date": formatDate(doc.date),
+          "Bill No": doc.bill_number || doc.invoice_number,
+          "Supplier Name": doc.vendor_name || 'Vendor',
+          "Supplier GSTIN": doc.gstin || doc.items_raw?.gstin || 'URP',
+          "ITC Availability": 'Eligible',
+          "Taxable Amount": (Number(doc.total_without_gst) || 0).toFixed(2),
+          "CGST Credit": cgst.toFixed(2),
+          "SGST Credit": sgst.toFixed(2),
+          "IGST Credit": igst.toFixed(2),
+          "Total ITC Available": totalGst.toFixed(2)
+        };
+      });
+    }
+
+    if (activeTab === 'GSTR-3B') {
+      const salesBills = bills.filter(b => b.type === 'Sale');
+      const purchaseBills = bills.filter(b => b.type === 'Purchase');
+
+      let salesTaxable = 0, salesCgst = 0, salesSgst = 0, salesIgst = 0, salesTotalGst = 0;
+      salesBills.forEach(b => {
+        salesTaxable += Number(b.total_without_gst || 0);
+        const { cgst, sgst, igst, totalGst } = getBillGstBreakdown(b);
+        salesCgst += cgst; salesSgst += sgst; salesIgst += igst; salesTotalGst += totalGst;
+      });
+
+      let purchaseTaxable = 0, purchaseCgst = 0, purchaseSgst = 0, purchaseIgst = 0, purchaseTotalGst = 0;
+      purchaseBills.forEach(b => {
+        purchaseTaxable += Number(b.total_without_gst || 0);
+        const { cgst, sgst, igst, totalGst } = getBillGstBreakdown(b);
+        purchaseCgst += cgst; purchaseSgst += sgst; purchaseIgst += igst; purchaseTotalGst += totalGst;
+      });
+
+      return [
+        {
+          "Section": "3.1 (a) Outward Taxable Supplies (Sales)",
+          "Taxable Value": salesTaxable.toFixed(2),
+          "Integrated Tax (IGST)": salesIgst.toFixed(2),
+          "Central Tax (CGST)": salesCgst.toFixed(2),
+          "State Tax (SGST)": salesSgst.toFixed(2),
+          "Total Tax": salesTotalGst.toFixed(2)
+        },
+        {
+          "Section": "4.0 (A) Eligible ITC (Purchases)",
+          "Taxable Value": purchaseTaxable.toFixed(2),
+          "Integrated Tax (IGST)": purchaseIgst.toFixed(2),
+          "Central Tax (CGST)": purchaseCgst.toFixed(2),
+          "State Tax (SGST)": purchaseSgst.toFixed(2),
+          "Total Tax": purchaseTotalGst.toFixed(2)
+        },
+        {
+          "Section": "5.0 Exempt / Nil-Rated Inward Supplies",
+          "Taxable Value": "0.00",
+          "Integrated Tax (IGST)": "0.00",
+          "Central Tax (CGST)": "0.00",
+          "State Tax (SGST)": "0.00",
+          "Total Tax": "0.00"
+        },
+        {
+          "Section": "6.1 Net Tax Payable / (ITC Balance)",
+          "Taxable Value": (salesTaxable - purchaseTaxable).toFixed(2),
+          "Integrated Tax (IGST)": (salesIgst - purchaseIgst).toFixed(2),
+          "Central Tax (CGST)": (salesCgst - purchaseCgst).toFixed(2),
+          "State Tax (SGST)": (salesSgst - purchaseSgst).toFixed(2),
+          "Total Tax": (salesTotalGst - purchaseTotalGst).toFixed(2)
+        }
+      ];
     }
 
     return [];

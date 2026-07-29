@@ -11,11 +11,8 @@ const SplashScreen: React.FC<SplashScreenProps> = ({ isExiting }) => {
       <div className="relative z-10 flex flex-col items-center animate-in zoom-in-95 duration-1000 p-6 text-center">
         <Logo size={100} className="mb-6 rounded-[20px] shadow-lg shadow-primary/20" />
         <div className="text-center">
-          <h1 className="text-3xl sm:text-4xl font-bold text-slate-900 dark:text-white tracking-tight mb-2 font-['Poppins'] flex flex-wrap items-center justify-center gap-2">
+          <h1 className="text-3xl sm:text-4xl font-bold text-slate-900 dark:text-white tracking-tight mb-2 font-['Poppins']">
             Bipin Petroleum Co.
-            <span className="text-[10px] font-bold bg-primary/10 text-primary border border-primary/20 px-2.5 py-0.5 rounded-full uppercase tracking-wider select-none">
-              Early Access
-            </span>
           </h1>
           <p className="text-sm font-semibold text-primary dark:text-blue-400 tracking-[0.25em] uppercase font-['Poppins'] mt-1">
             Powered by ZenterPrime
