@@ -11,6 +11,7 @@ import UpdateNotification from './UpdateNotification';
 import CreateNewModal from './CreateNewModal';
 import GlobalSearchModal from './GlobalSearchModal';
 import ImportExcelModal from './ImportExcelModal';
+import SyncStatusBadge from './SyncStatusBadge';
 import { getUserActivity } from '../utils/activityTracker';
 import { processOfflineSyncQueue } from '../lib/syncEngine';
 
@@ -504,6 +505,7 @@ const Layout = () => {
             )}
           </div>
           <div className="flex items-center space-x-3">
+            <SyncStatusBadge />
             {isInactive && (
               <div className="hidden md:flex items-center space-x-2 bg-red-50 dark:bg-red-900/20 px-3 py-1 rounded-full border border-red-100 dark:border-red-800 animate-pulse transition-all">
                 <AlertTriangle className="w-3.5 h-3.5 text-red-500" />

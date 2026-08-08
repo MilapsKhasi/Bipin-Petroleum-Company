@@ -17,9 +17,86 @@ export interface PendingSyncOp {
   timestamp: number;
   status: 'PENDING' | 'SYNCING' | 'FAILED';
   retryCount: number;
+  lastError?: string;
+}
+
+export type SyncState = 'ONLINE' | 'OFFLINE' | 'SYNCED' | 'PENDING_SYNC' | 'SYNCING' | 'SYNC_FAILED';
+
+export interface SyncStatusInfo {
+  isOnline: boolean;
+  state: SyncState;
+  pendingCount: number;
+  lastSyncedAt: Date | null;
+  lastError: string | null;
 }
 
 const SYNC_QUEUE_KEY = 'offline_pending_ops_queue';
+const LAST_SYNCED_KEY = 'offline_last_synced_time';
+
+let currentSyncState: SyncState = (typeof navigator !== 'undefined' && !navigator.onLine) ? 'OFFLINE' : 'SYNCED';
+let lastSyncedAt: Date | null = (() => {
+  if (typeof localStorage === 'undefined') return null;
+  const stored = localStorage.getItem(LAST_SYNCED_KEY);
+  return stored ? new Date(parseInt(stored, 10)) : null;
+})();
+let lastSyncError: string | null = null;
+const statusListeners = new Set<(info: SyncStatusInfo) => void>();
+
+export function generateUUID(): string {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return crypto.randomUUID();
+  }
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+    const r = (Math.random() * 16) | 0;
+    const v = c === 'x' ? r : (r & 0x3) | 0x8;
+    return v.toString(16);
+  });
+}
+
+export function notifySyncStatus() {
+  getPendingSyncQueue().then((queue) => {
+    const isOnline = typeof navigator !== 'undefined' ? navigator.onLine : true;
+    const pendingCount = queue.length;
+
+    let computedState: SyncState = currentSyncState;
+
+    if (!isOnline) {
+      computedState = 'OFFLINE';
+    } else if (isSyncingQueue) {
+      computedState = 'SYNCING';
+    } else if (lastSyncError && pendingCount > 0) {
+      computedState = 'SYNC_FAILED';
+    } else if (pendingCount > 0) {
+      computedState = 'PENDING_SYNC';
+    } else {
+      computedState = 'SYNCED';
+    }
+
+    const info: SyncStatusInfo = {
+      isOnline,
+      state: computedState,
+      pendingCount,
+      lastSyncedAt,
+      lastError: lastSyncError
+    };
+
+    statusListeners.forEach((listener) => {
+      try {
+        listener(info);
+      } catch (err) {
+        console.error('[SyncEngine] Status listener error:', err);
+      }
+    });
+  }).catch(() => {});
+}
+
+export function subscribeSyncStatus(callback: (info: SyncStatusInfo) => void): () => void {
+  statusListeners.add(callback);
+  notifySyncStatus();
+  return () => {
+    statusListeners.delete(callback);
+  };
+}
 
 export async function getPendingSyncQueue(): Promise<PendingSyncOp[]> {
   try {
@@ -29,7 +106,7 @@ export async function getPendingSyncQueue(): Promise<PendingSyncOp[]> {
     }
   } catch {}
 
-  const raw = localStorage.getItem(SYNC_QUEUE_KEY);
+  const raw = typeof localStorage !== 'undefined' ? localStorage.getItem(SYNC_QUEUE_KEY) : null;
   if (raw) {
     try {
       return JSON.parse(raw);
@@ -40,7 +117,9 @@ export async function getPendingSyncQueue(): Promise<PendingSyncOp[]> {
 
 export async function savePendingSyncQueue(queue: PendingSyncOp[]): Promise<void> {
   try {
-    localStorage.setItem(SYNC_QUEUE_KEY, JSON.stringify(queue));
+    if (typeof localStorage !== 'undefined') {
+      localStorage.setItem(SYNC_QUEUE_KEY, JSON.stringify(queue));
+    }
   } catch {}
 
   try {
@@ -48,15 +127,20 @@ export async function savePendingSyncQueue(queue: PendingSyncOp[]): Promise<void
       await upsertToIDB('sync_queue' as IDBStoreName, item);
     }
   } catch {}
+
+  notifySyncStatus();
 }
 
 export async function removeQueueItem(id: string): Promise<void> {
   const queue = await getPendingSyncQueue();
   const updated = queue.filter((q) => q.id !== id);
   try {
-    localStorage.setItem(SYNC_QUEUE_KEY, JSON.stringify(updated));
+    if (typeof localStorage !== 'undefined') {
+      localStorage.setItem(SYNC_QUEUE_KEY, JSON.stringify(updated));
+    }
   } catch {}
   await deleteFromIDB('sync_queue' as IDBStoreName, id);
+  notifySyncStatus();
 }
 
 export async function enqueueOfflineOp(params: {
@@ -81,7 +165,7 @@ export async function enqueueOfflineOp(params: {
     if (existingIdx !== -1) {
       const existing = queue[existingIdx];
       if (existing.op === 'INSERT') {
-        // Created offline and deleted offline before syncing to cloud: purge completely!
+        // Created offline and deleted offline before syncing: purge completely
         await removeQueueItem(existing.id);
         return;
       }
@@ -94,7 +178,7 @@ export async function enqueueOfflineOp(params: {
     }
 
     const newItem: PendingSyncOp = {
-      id: `sync_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`,
+      id: `sync_${generateUUID()}`,
       table: params.table,
       op: 'DELETE',
       recordId: params.recordId,
@@ -121,7 +205,7 @@ export async function enqueueOfflineOp(params: {
     existing.status = 'PENDING';
   } else {
     const newItem: PendingSyncOp = {
-      id: `sync_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`,
+      id: `sync_${generateUUID()}`,
       table: params.table,
       op: params.op,
       recordId: params.recordId,
@@ -150,25 +234,31 @@ export async function processOfflineSyncQueue(): Promise<{
   }
 
   if (typeof window !== 'undefined' && localStorage.getItem('use_offline_mode') === 'true') {
+    notifySyncStatus();
     return { success: true, processedCount: 0, remainingCount: 0 };
   }
 
   if (typeof navigator !== 'undefined' && !navigator.onLine) {
+    currentSyncState = 'OFFLINE';
+    notifySyncStatus();
     return { success: false, processedCount: 0, remainingCount: -1 };
   }
 
   isSyncingQueue = true;
+  currentSyncState = 'SYNCING';
+  notifySyncStatus();
 
   try {
     const { data: userData, error: userErr } = await realSupabase.auth.getUser();
     if (userErr || !userData?.user) {
       isSyncingQueue = false;
+      notifySyncStatus();
       return { success: false, processedCount: 0, remainingCount: -1 };
     }
 
     const currentUserId = userData.user.id;
 
-    // Fetch user's accessible workspace IDs for Workspace Isolation (Requirement 8)
+    // Fetch user's accessible workspace IDs for Workspace Isolation
     const { data: userCompanies } = await realSupabase
       .from('companies')
       .select('id')
@@ -181,6 +271,13 @@ export async function processOfflineSyncQueue(): Promise<{
     let queue = await getPendingSyncQueue();
     if (!queue.length) {
       isSyncingQueue = false;
+      lastSyncedAt = new Date();
+      if (typeof localStorage !== 'undefined') {
+        localStorage.setItem(LAST_SYNCED_KEY, String(lastSyncedAt.getTime()));
+      }
+      lastSyncError = null;
+      currentSyncState = 'SYNCED';
+      notifySyncStatus();
       return { success: true, processedCount: 0, remainingCount: 0 };
     }
 
@@ -199,10 +296,10 @@ export async function processOfflineSyncQueue(): Promise<{
         }
       }
 
-      console.log(`[Sync Engine] Processing ${item.op} on ${item.table} (ID: ${item.recordId})...`);
+      console.log(`[Sync Engine] Syncing ${item.op} on ${item.table} (ID: ${item.recordId})...`);
 
       try {
-        let opError = null;
+        let opError: any = null;
 
         if (item.op === 'DELETE') {
           const { error } = await realSupabase
@@ -227,6 +324,8 @@ export async function processOfflineSyncQueue(): Promise<{
           console.warn(`[Sync Engine] Op failed for ${item.table} (${item.recordId}):`, opError);
           item.status = 'FAILED';
           item.retryCount = (item.retryCount || 0) + 1;
+          item.lastError = opError.message || String(opError);
+          lastSyncError = item.lastError || 'Unknown error';
           await savePendingSyncQueue(queue);
           break; // Partial failure recovery: stop loop, remaining items retry next time
         } else {
@@ -238,8 +337,9 @@ export async function processOfflineSyncQueue(): Promise<{
             await upsertToIDB(item.table as IDBStoreName, item.payload);
           }
         }
-      } catch (err) {
+      } catch (err: any) {
         console.warn(`[Sync Engine] Exception syncing item ${item.id}:`, err);
+        lastSyncError = err.message || 'Network exception during sync';
         break;
       }
     }
@@ -247,14 +347,30 @@ export async function processOfflineSyncQueue(): Promise<{
     const remainingQueue = await getPendingSyncQueue();
     isSyncingQueue = false;
 
+    if (remainingQueue.length === 0) {
+      lastSyncedAt = new Date();
+      if (typeof localStorage !== 'undefined') {
+        localStorage.setItem(LAST_SYNCED_KEY, String(lastSyncedAt.getTime()));
+      }
+      lastSyncError = null;
+      currentSyncState = 'SYNCED';
+    } else {
+      currentSyncState = lastSyncError ? 'SYNC_FAILED' : 'PENDING_SYNC';
+    }
+
+    notifySyncStatus();
+
     return {
       success: true,
       processedCount,
       remainingCount: remainingQueue.length
     };
-  } catch (err) {
+  } catch (err: any) {
     console.warn('[Sync Engine] Queue processing error:', err);
     isSyncingQueue = false;
+    lastSyncError = err.message || 'Failed processing queue';
+    currentSyncState = 'SYNC_FAILED';
+    notifySyncStatus();
     return { success: false, processedCount: 0, remainingCount: -1 };
   }
 }
@@ -263,7 +379,15 @@ export async function processOfflineSyncQueue(): Promise<{
 if (typeof window !== 'undefined') {
   window.addEventListener('online', () => {
     console.log('[Sync Engine] Network status: ONLINE. Processing queue in background...');
+    currentSyncState = 'SYNCING';
+    notifySyncStatus();
     processOfflineSyncQueue().catch((err) => console.warn('[Sync Engine] Background sync error:', err));
+  });
+
+  window.addEventListener('offline', () => {
+    console.log('[Sync Engine] Network status: OFFLINE.');
+    currentSyncState = 'OFFLINE';
+    notifySyncStatus();
   });
 
   // Background interval check every 30 seconds
@@ -273,3 +397,4 @@ if (typeof window !== 'undefined') {
     }
   }, 30000);
 }
+
