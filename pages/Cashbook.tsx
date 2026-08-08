@@ -122,7 +122,7 @@ const Cashbook = () => {
     };
 
     try {
-      if (data.id && typeof data.id === 'string' && !data.id.startsWith('local_')) {
+      if (data.id) {
         await supabase.from('cashbooks').update(payload).eq('id', data.id);
       } else {
         await supabase.from('cashbooks').insert([{ ...payload, created_at: new Date().toISOString() }]);

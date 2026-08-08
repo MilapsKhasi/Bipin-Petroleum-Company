@@ -314,6 +314,19 @@ export async function processOfflineSyncQueue(): Promise<{
           delete cleanPayload.displayDate;
           delete cleanPayload.type;
 
+          const isUuid = (str: any) => typeof str === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(str);
+          if (cleanPayload.id && !isUuid(cleanPayload.id)) {
+            const newUuid = generateUUID();
+            console.log(`[Sync Engine] Converting legacy non-UUID id '${cleanPayload.id}' to valid UUID '${newUuid}' for ${item.table}`);
+            cleanPayload.id = newUuid;
+            item.recordId = newUuid;
+            if (item.payload) item.payload.id = newUuid;
+          } else if (!cleanPayload.id) {
+            cleanPayload.id = generateUUID();
+            item.recordId = cleanPayload.id;
+            if (item.payload) item.payload.id = cleanPayload.id;
+          }
+
           const { error } = await realSupabase
             .from(item.table)
             .upsert([cleanPayload], { onConflict: 'id' });

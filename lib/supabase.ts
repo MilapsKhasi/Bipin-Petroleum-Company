@@ -7,7 +7,7 @@ import {
   deleteFromIDB, 
   IDBStoreName 
 } from './idb';
-import { enqueueOfflineOp } from './syncEngine';
+import { enqueueOfflineOp, generateUUID } from './syncEngine';
 
 if (typeof window !== 'undefined') {
   initIndexedDB().catch((err) => console.warn('[IndexedDB] Init warning:', err));
@@ -455,10 +455,11 @@ class MockBuilder {
       const newRows = Array.isArray(rows) ? rows : [rows];
       const inserted: any[] = [];
       for (const row of newRows) {
+        const rowId = (row.id && row.id !== 'undefined' && row.id !== 'null') ? row.id : generateUUID();
         const newRow = {
-          id: row.id || ('loc_' + Date.now() + '_' + Math.random().toString(36).substring(2, 9)),
           created_at: new Date().toISOString(),
-          ...row
+          ...row,
+          id: rowId
         };
         items.push(newRow);
         inserted.push(newRow);
@@ -521,10 +522,11 @@ class MockBuilder {
           itemToSave = items[index];
           upserted.push(items[index]);
         } else {
+          const itemId = (p.id && p.id !== 'undefined' && p.id !== 'null') ? p.id : generateUUID();
           itemToSave = {
-            id: p.id || ('loc_' + Date.now() + '_' + Math.random().toString(36).substring(2, 9)),
             created_at: new Date().toISOString(),
-            ...p
+            ...p,
+            id: itemId
           };
           items.push(itemToSave);
           upserted.push(itemToSave);
