@@ -885,15 +885,17 @@ class ResilientQueryBuilder {
 
 const resilientAuth = {
   async getSession() {
-    if (typeof window !== 'undefined' && localStorage.getItem('use_offline_mode') === 'true' && typeof navigator !== 'undefined' && !navigator.onLine) {
+    const isOffline = (typeof navigator !== 'undefined' && !navigator.onLine) || 
+                      (typeof window !== 'undefined' && localStorage.getItem('use_offline_mode') === 'true');
+    if (isOffline) {
       return await mockAuth.getSession();
     }
     try {
       const res = await realSupabase.auth.getSession();
-      if (res?.error && isNetworkError(res.error) && typeof navigator !== 'undefined' && !navigator.onLine) {
+      if (res?.error && (isNetworkError(res.error) || (typeof navigator !== 'undefined' && !navigator.onLine))) {
         return await mockAuth.getSession();
       }
-      if (!res?.data?.session && typeof window !== 'undefined' && localStorage.getItem('local_session_user') && localStorage.getItem('use_offline_mode') === 'true') {
+      if (!res?.data?.session && typeof window !== 'undefined' && localStorage.getItem('local_session_user')) {
         return await mockAuth.getSession();
       }
       if (res?.data?.session?.user) {
@@ -904,26 +906,29 @@ const resilientAuth = {
             localStorage.removeItem('activeCompanyName');
           }
         }
+        localStorage.setItem('local_session_user', JSON.stringify(res.data.session.user));
         syncUserWorkspaceDataToIndexedDB(res.data.session.user.id).catch(() => {});
       }
       return res;
     } catch (err: any) {
-      if (isNetworkError(err) && typeof navigator !== 'undefined' && !navigator.onLine) {
+      if (isNetworkError(err) || (typeof navigator !== 'undefined' && !navigator.onLine) || (typeof window !== 'undefined' && localStorage.getItem('local_session_user'))) {
         return await mockAuth.getSession();
       }
       return { data: { session: null }, error: err };
     }
   },
   async getUser() {
-    if (typeof window !== 'undefined' && localStorage.getItem('use_offline_mode') === 'true' && typeof navigator !== 'undefined' && !navigator.onLine) {
+    const isOffline = (typeof navigator !== 'undefined' && !navigator.onLine) || 
+                      (typeof window !== 'undefined' && localStorage.getItem('use_offline_mode') === 'true');
+    if (isOffline) {
       return await mockAuth.getUser();
     }
     try {
       const res = await realSupabase.auth.getUser();
-      if (res?.error && isNetworkError(res.error) && typeof navigator !== 'undefined' && !navigator.onLine) {
+      if (res?.error && (isNetworkError(res.error) || (typeof navigator !== 'undefined' && !navigator.onLine))) {
         return await mockAuth.getUser();
       }
-      if (!res?.data?.user && typeof window !== 'undefined' && localStorage.getItem('local_session_user') && localStorage.getItem('use_offline_mode') === 'true') {
+      if (!res?.data?.user && typeof window !== 'undefined' && localStorage.getItem('local_session_user')) {
         return await mockAuth.getUser();
       }
       if (res?.data?.user) {
@@ -934,11 +939,12 @@ const resilientAuth = {
             localStorage.removeItem('activeCompanyName');
           }
         }
+        localStorage.setItem('local_session_user', JSON.stringify(res.data.user));
         syncUserWorkspaceDataToIndexedDB(res.data.user.id).catch(() => {});
       }
       return res;
     } catch (err: any) {
-      if (isNetworkError(err) && typeof navigator !== 'undefined' && !navigator.onLine) {
+      if (isNetworkError(err) || (typeof navigator !== 'undefined' && !navigator.onLine) || (typeof window !== 'undefined' && localStorage.getItem('local_session_user'))) {
         return await mockAuth.getUser();
       }
       return { data: { user: null }, error: err };

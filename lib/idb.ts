@@ -25,6 +25,21 @@ export type IDBStoreName = (typeof IDB_STORES)[number];
 
 // In-memory cache for ultra-fast synchronous queries by MockBuilder
 export const idbMemoryCache: Record<string, any[]> = {};
+
+// Synchronously seed idbMemoryCache from localStorage as immediate fallback on script load
+if (typeof localStorage !== 'undefined') {
+  IDB_STORES.forEach((store) => {
+    if (store !== 'meta' && !idbMemoryCache[store]) {
+      const raw = localStorage.getItem(`local_db_${store}`);
+      if (raw) {
+        try { idbMemoryCache[store] = JSON.parse(raw); } catch { idbMemoryCache[store] = []; }
+      } else {
+        idbMemoryCache[store] = [];
+      }
+    }
+  });
+}
+
 let dbPromise: Promise<IDBDatabase> | null = null;
 let isInitialized = false;
 
