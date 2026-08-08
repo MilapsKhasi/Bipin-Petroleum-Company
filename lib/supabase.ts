@@ -59,6 +59,34 @@ function enableOfflineMode() {
   }
 }
 
+export async function clearOfflineWorkspaceCache() {
+  if (typeof localStorage !== 'undefined') {
+    localStorage.removeItem('activeCompanyId');
+    localStorage.removeItem('activeCompanyName');
+    localStorage.removeItem('local_session_user');
+    localStorage.removeItem('use_offline_mode');
+    const tables = [
+      'companies',
+      'profiles',
+      'sales_invoices',
+      'purchase_bills',
+      'customers',
+      'vendors',
+      'stock_items',
+      'cashbook',
+      'cashbooks',
+      'duties_taxes',
+      'delivery_challans',
+      'payment_vouchers'
+    ] as const;
+    for (const t of tables) {
+      localStorage.removeItem(`local_db_${t}`);
+      idbMemoryCache[t] = [];
+      await saveAllToIDB(t as IDBStoreName, []);
+    }
+  }
+}
+
 let isSyncingWorkspaces = false;
 
 export async function syncUserWorkspaceDataToIndexedDB(userId: string) {
@@ -83,10 +111,27 @@ export async function syncUserWorkspaceDataToIndexedDB(userId: string) {
       return;
     }
 
-    // Save user's companies to IndexedDB
-    await upsertToIDB('companies', companies);
+    // Save ONLY user's accessible companies to storage
+    await saveAllToIDB('companies', companies);
+    idbMemoryCache['companies'] = companies;
+    if (typeof localStorage !== 'undefined') {
+      localStorage.setItem('local_db_companies', JSON.stringify(companies));
+    }
 
     const companyIds = companies.map((c: any) => c.id).filter(Boolean);
+
+    // Validate activeCompanyId
+    if (typeof localStorage !== 'undefined') {
+      const currentActiveId = localStorage.getItem('activeCompanyId');
+      const isValidActive = companyIds.includes(currentActiveId);
+      if (!isValidActive && companyIds.length > 0) {
+        localStorage.setItem('activeCompanyId', companies[0].id);
+        localStorage.setItem('activeCompanyName', companies[0].name || '');
+      } else if (companyIds.length === 0) {
+        localStorage.removeItem('activeCompanyId');
+        localStorage.removeItem('activeCompanyName');
+      }
+    }
 
     // Fetch user profile
     const { data: profile } = await realSupabase
@@ -96,15 +141,13 @@ export async function syncUserWorkspaceDataToIndexedDB(userId: string) {
       .maybeSingle();
 
     if (profile) {
-      await upsertToIDB('profiles', profile);
+      await saveAllToIDB('profiles', [profile]);
+      idbMemoryCache['profiles'] = [profile];
+      if (typeof localStorage !== 'undefined') {
+        localStorage.setItem('local_db_profiles', JSON.stringify([profile]));
+      }
     }
 
-    if (companyIds.length === 0) {
-      isSyncingWorkspaces = false;
-      return;
-    }
-
-    // Sync all workspace-specific data for these company IDs
     const workspaceTables = [
       'sales_invoices',
       'purchase_bills',
@@ -118,6 +161,19 @@ export async function syncUserWorkspaceDataToIndexedDB(userId: string) {
       'payment_vouchers'
     ] as const;
 
+    if (companyIds.length === 0) {
+      for (const table of workspaceTables) {
+        await saveAllToIDB(table as IDBStoreName, []);
+        idbMemoryCache[table] = [];
+        if (typeof localStorage !== 'undefined') {
+          localStorage.setItem(`local_db_${table}`, JSON.stringify([]));
+        }
+      }
+      isSyncingWorkspaces = false;
+      return;
+    }
+
+    // Sync workspace-specific data for these company IDs only
     for (const table of workspaceTables) {
       try {
         const { data: rows } = await realSupabase
@@ -125,8 +181,11 @@ export async function syncUserWorkspaceDataToIndexedDB(userId: string) {
           .select('*')
           .in('company_id', companyIds);
 
-        if (rows && Array.isArray(rows) && rows.length > 0) {
-          await upsertToIDB(table as IDBStoreName, rows);
+        const validRows = (rows && Array.isArray(rows)) ? rows : [];
+        await saveAllToIDB(table as IDBStoreName, validRows);
+        idbMemoryCache[table] = validRows;
+        if (typeof localStorage !== 'undefined') {
+          localStorage.setItem(`local_db_${table}`, JSON.stringify(validRows));
         }
       } catch (tableErr) {
         console.warn(`[IndexedDB Sync] Error syncing table ${table}:`, tableErr);
@@ -168,22 +227,40 @@ class MockBuilder {
   }
 
   getItems() {
+    let items: any[] = [];
     if (idbMemoryCache[this.table] && Array.isArray(idbMemoryCache[this.table]) && idbMemoryCache[this.table].length > 0) {
-      return idbMemoryCache[this.table];
-    }
-    const key = `local_db_${this.table}`;
-    const raw = localStorage.getItem(key);
-    if (!raw) return idbMemoryCache[this.table] || [];
-    try {
-      const items = JSON.parse(raw);
-      if (Array.isArray(items) && items.length > 0) {
-        idbMemoryCache[this.table] = items;
-        upsertToIDB(this.table as IDBStoreName, items);
+      items = idbMemoryCache[this.table];
+    } else {
+      const key = `local_db_${this.table}`;
+      const raw = typeof localStorage !== 'undefined' ? localStorage.getItem(key) : null;
+      if (raw) {
+        try {
+          const parsed = JSON.parse(raw);
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            items = parsed;
+            idbMemoryCache[this.table] = parsed;
+            saveAllToIDB(this.table as IDBStoreName, parsed);
+          }
+        } catch {}
       }
-      return items;
-    } catch {
-      return idbMemoryCache[this.table] || [];
     }
+
+    if (!items || !Array.isArray(items)) items = [];
+
+    // Safety filter for companies: if real user session exists, filter out local-company-1
+    if (this.table === 'companies' && typeof localStorage !== 'undefined') {
+      const userJson = localStorage.getItem('local_session_user');
+      if (userJson) {
+        try {
+          const u = JSON.parse(userJson);
+          if (u && u.id && u.id !== 'local-user-1') {
+            return items.filter((c: any) => c && c.id !== 'local-company-1');
+          }
+        } catch {}
+      }
+    }
+
+    return items;
   }
 
   saveItems(items: any[]) {
@@ -293,7 +370,47 @@ class MockBuilder {
     return this;
   }
 
-  or(filters: string) {
+  or(filtersString: string) {
+    if (!filtersString) return this;
+
+    const clauses = filtersString.split(',').map((c) => c.trim()).filter(Boolean);
+    const parsedConditions = clauses.map((clause) => {
+      const parts = clause.split('.');
+      if (parts.length >= 3) {
+        const column = parts[0];
+        const operator = parts[1];
+        const value = parts.slice(2).join('.');
+        return { column, operator, value };
+      }
+      return null;
+    }).filter((x): x is { column: string; operator: string; value: string } => x !== null);
+
+    if (parsedConditions.length > 0) {
+      this.filters.push((item: any) => {
+        if (!item) return false;
+        return parsedConditions.some(({ column, operator, value }) => {
+          const itemVal = item[column];
+          if (operator === 'eq') {
+            return String(itemVal) === String(value);
+          }
+          if (operator === 'neq') {
+            return String(itemVal) !== String(value);
+          }
+          if (operator === 'is') {
+            if (value === 'null') return itemVal === null || itemVal === undefined;
+            if (value === 'true') return itemVal === true;
+            if (value === 'false') return itemVal === false;
+            return String(itemVal) === String(value);
+          }
+          if (operator === 'in') {
+            const cleanVals = value.replace(/^\(|\)$/g, '').split(';');
+            return cleanVals.map((v) => String(v).trim()).includes(String(itemVal));
+          }
+          return false;
+        });
+      });
+    }
+
     return this;
   }
 
@@ -517,61 +634,63 @@ class MockBuilder {
 }
 
 function seedLocalStorage() {
-  if (!localStorage.getItem('local_db_users')) {
-    localStorage.setItem('local_db_users', JSON.stringify([
-      { id: 'local-user-1', email: 'offline@zenterprime.com', created_at: new Date().toISOString() }
-    ]));
-  }
-  if (!localStorage.getItem('local_session_user')) {
-    localStorage.setItem('local_session_user', JSON.stringify({
-      id: 'local-user-1',
-      email: 'offline@zenterprime.com',
-      created_at: new Date().toISOString()
-    }));
-  }
-  if (!localStorage.getItem('local_db_companies')) {
-    localStorage.setItem('local_db_companies', JSON.stringify([
-      {
-        id: 'local-company-1',
-        name: 'Local Demo Company',
-        gstin: '22AAAAA0000A1Z1',
-        address: '123 Main Street',
-        is_deleted: false,
-        created_at: new Date().toISOString(),
-        created_by: 'local-user-1'
+  if (typeof localStorage === 'undefined') return;
+
+  const userJson = localStorage.getItem('local_session_user');
+  if (userJson) {
+    try {
+      const u = JSON.parse(userJson);
+      if (u && u.id && u.id !== 'local-user-1') {
+        // Real user session exists! Do not inject demo company or demo user.
+        return;
       }
-    ]));
+    } catch {}
   }
-  if (!localStorage.getItem('activeCompanyId') && localStorage.getItem('use_offline_mode') === 'true') {
-    localStorage.setItem('activeCompanyId', 'local-company-1');
-    localStorage.setItem('activeCompanyName', 'Local Demo Company');
+
+  // Only seed demo data if offline mode is explicitly requested
+  if (localStorage.getItem('use_offline_mode') === 'true') {
+    if (!localStorage.getItem('local_db_users')) {
+      localStorage.setItem('local_db_users', JSON.stringify([
+        { id: 'local-user-1', email: 'offline@zenterprime.com', created_at: new Date().toISOString() }
+      ]));
+    }
+    if (!localStorage.getItem('local_session_user')) {
+      localStorage.setItem('local_session_user', JSON.stringify({
+        id: 'local-user-1',
+        email: 'offline@zenterprime.com',
+        created_at: new Date().toISOString()
+      }));
+    }
+    if (!localStorage.getItem('local_db_companies')) {
+      localStorage.setItem('local_db_companies', JSON.stringify([
+        {
+          id: 'local-company-1',
+          name: 'Local Demo Company',
+          gstin: '22AAAAA0000A1Z1',
+          address: '123 Main Street',
+          is_deleted: false,
+          created_at: new Date().toISOString(),
+          created_by: 'local-user-1'
+        }
+      ]));
+    }
+    if (!localStorage.getItem('activeCompanyId')) {
+      localStorage.setItem('activeCompanyId', 'local-company-1');
+      localStorage.setItem('activeCompanyName', 'Local Demo Company');
+    }
+    if (!localStorage.getItem('local_db_profiles')) {
+      localStorage.setItem('local_db_profiles', JSON.stringify([
+        { id: 'local-user-1', active_company_id: 'local-company-1', full_name: 'Local User', created_at: new Date().toISOString() }
+      ]));
+    }
   }
-  if (!localStorage.getItem('local_db_profiles')) {
-    localStorage.setItem('local_db_profiles', JSON.stringify([
-      { id: 'local-user-1', active_company_id: 'local-company-1', full_name: 'Local User', created_at: new Date().toISOString() }
-    ]));
-  }
-  if (!localStorage.getItem('local_db_sales_invoices')) {
-    localStorage.setItem('local_db_sales_invoices', JSON.stringify([]));
-  }
-  if (!localStorage.getItem('local_db_purchase_bills')) {
-    localStorage.setItem('local_db_purchase_bills', JSON.stringify([]));
-  }
-  if (!localStorage.getItem('local_db_customers')) {
-    localStorage.setItem('local_db_customers', JSON.stringify([]));
-  }
-  if (!localStorage.getItem('local_db_vendors')) {
-    localStorage.setItem('local_db_vendors', JSON.stringify([]));
-  }
-  if (!localStorage.getItem('local_db_stock_items')) {
-    localStorage.setItem('local_db_stock_items', JSON.stringify([]));
-  }
-  if (!localStorage.getItem('local_db_cashbook')) {
-    localStorage.setItem('local_db_cashbook', JSON.stringify([]));
-  }
-  if (!localStorage.getItem('local_db_duties_taxes')) {
-    localStorage.setItem('local_db_duties_taxes', JSON.stringify([]));
-  }
+
+  const tables = ['sales_invoices', 'purchase_bills', 'customers', 'vendors', 'stock_items', 'cashbook', 'duties_taxes'] as const;
+  tables.forEach((t) => {
+    if (!localStorage.getItem(`local_db_${t}`)) {
+      localStorage.setItem(`local_db_${t}`, JSON.stringify([]));
+    }
+  });
 }
 
 const authListeners = new Set<(event: string, session: any) => void>();
@@ -626,7 +745,7 @@ const mockAuth = {
     return { data: { user, session }, error: null };
   },
   async signOut() {
-    localStorage.removeItem('local_session_user');
+    await clearOfflineWorkspaceCache();
     notifyAuthListeners('SIGNED_OUT', null);
     return { error: null };
   },
