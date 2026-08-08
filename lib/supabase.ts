@@ -917,7 +917,9 @@ class ResilientQueryBuilder {
   }
 
   async execute() {
-    if (typeof window !== 'undefined' && localStorage.getItem('use_offline_mode') === 'true') {
+    const isOffline = (typeof navigator !== 'undefined' && !navigator.onLine) ||
+                      (typeof window !== 'undefined' && localStorage.getItem('use_offline_mode') === 'true');
+    if (isOffline) {
       return this.mockQb.execute();
     }
     try {
@@ -932,12 +934,9 @@ class ResilientQueryBuilder {
       }
       return res;
     } catch (err: any) {
-      if (isNetworkError(err)) {
-        console.warn(`[Supabase Network Warning] Query on '${this.table}' threw network exception, using local offline storage.`, err.message || err);
-        enableOfflineMode();
-        return this.mockQb.execute();
-      }
-      throw err;
+      console.warn(`[Supabase Network Warning] Query on '${this.table}' threw exception, using local offline storage.`, err.message || err);
+      enableOfflineMode();
+      return this.mockQb.execute();
     }
   }
 
@@ -946,17 +945,15 @@ class ResilientQueryBuilder {
       const res = await this.execute();
       return resolve(res);
     } catch (err) {
-      if (isNetworkError(err)) {
-        enableOfflineMode();
-        return resolve(this.mockQb.execute());
-      }
-      if (reject) return reject(err);
-      throw err;
+      enableOfflineMode();
+      return resolve(this.mockQb.execute());
     }
   }
 
   async single() {
-    if (typeof window !== 'undefined' && localStorage.getItem('use_offline_mode') === 'true') {
+    const isOffline = (typeof navigator !== 'undefined' && !navigator.onLine) ||
+                      (typeof window !== 'undefined' && localStorage.getItem('use_offline_mode') === 'true');
+    if (isOffline) {
       return await this.mockQb.single();
     }
     try {
@@ -970,16 +967,15 @@ class ResilientQueryBuilder {
       }
       return res;
     } catch (err: any) {
-      if (isNetworkError(err)) {
-        enableOfflineMode();
-        return await this.mockQb.single();
-      }
-      return { data: null, error: { message: err.message || 'Error', code: 'FETCH_ERROR' } };
+      enableOfflineMode();
+      return await this.mockQb.single();
     }
   }
 
   async maybeSingle() {
-    if (typeof window !== 'undefined' && localStorage.getItem('use_offline_mode') === 'true') {
+    const isOffline = (typeof navigator !== 'undefined' && !navigator.onLine) ||
+                      (typeof window !== 'undefined' && localStorage.getItem('use_offline_mode') === 'true');
+    if (isOffline) {
       return await this.mockQb.maybeSingle();
     }
     try {
@@ -993,11 +989,8 @@ class ResilientQueryBuilder {
       }
       return res;
     } catch (err: any) {
-      if (isNetworkError(err)) {
-        enableOfflineMode();
-        return await this.mockQb.maybeSingle();
-      }
-      return { data: null, error: null };
+      enableOfflineMode();
+      return await this.mockQb.maybeSingle();
     }
   }
 }
