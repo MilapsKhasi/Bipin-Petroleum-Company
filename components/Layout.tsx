@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { Outlet, useNavigate, useLocation, Link } from 'react-router-dom';
-import { LayoutDashboard, Users, UserSquare2, BadgeIndianRupee, Package, BarChart3, Settings as SettingsIcon, ShoppingCart, Percent, BookOpen, ChevronDown, Building2, Menu, LogOut, Edit, Trash2, Save, Plus, ShieldCheck, AlertTriangle, MonitorPlay, Wallet, Contact, FileText, ArrowDownCircle, ArrowUpCircle, FolderPlus, Building, Crown, Lock, Search, FileSpreadsheet, Truck } from 'lucide-react';
+import { LayoutDashboard, Users, UserSquare2, BadgeIndianRupee, Package, BarChart3, Settings as SettingsIcon, ShoppingCart, Percent, BookOpen, ChevronDown, Building2, Menu, LogOut, Edit, Trash2, Save, Plus, ShieldCheck, AlertTriangle, MonitorPlay, Wallet, Contact, FileText, ArrowDownCircle, ArrowUpCircle, FolderPlus, Building, Crown, Lock, Search, FileSpreadsheet, Truck, KeyRound, HardDrive } from 'lucide-react';
 import { supabase, getAuthUser } from '../lib/supabase';
 import { useCompany } from '../context/CompanyContext';
 import Logo from './Logo';
@@ -11,9 +11,9 @@ import UpdateNotification from './UpdateNotification';
 import CreateNewModal from './CreateNewModal';
 import GlobalSearchModal from './GlobalSearchModal';
 import ImportExcelModal from './ImportExcelModal';
-import SyncStatusBadge from './SyncStatusBadge';
 import { getUserActivity } from '../utils/activityTracker';
-import { processOfflineSyncQueue } from '../lib/syncEngine';
+import { getActiveLicense, DEFAULT_LICENSE_KEY, removeActiveLicense } from '../lib/licenseManager';
+import BackupStatusBadge from './BackupStatusBadge';
 
 const Layout = () => {
   const [isSidebarOpen, setIsSidebarOpen] = useState(window.innerWidth > 1024);
@@ -29,6 +29,7 @@ const Layout = () => {
 
   const [user, setUser] = useState<any>(null);
   const [isInactive, setIsInactive] = useState(false);
+  const [activeLicense, setActiveLicenseState] = useState<any>(null);
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -45,9 +46,7 @@ const Layout = () => {
     const fetchUser = async () => {
       const u = await getAuthUser();
       setUser(u);
-      if (u) {
-        processOfflineSyncQueue().catch((err) => console.warn('[Layout] Sync queue error:', err));
-      }
+      setActiveLicenseState(getActiveLicense());
     };
     fetchUser();
   }, []);
@@ -195,12 +194,12 @@ const Layout = () => {
 
   const handleSignOut = async () => {
     try {
-      const { error } = await supabase.auth.signOut();
-      if (error) throw error;
-      localStorage.clear();
-      navigate('/setup', { replace: true });
+      removeActiveLicense();
+      await supabase.auth.signOut();
+      navigate('/auth', { replace: true });
     } catch (err) {
       console.error("Error signing out:", err);
+      navigate('/auth', { replace: true });
     }
   };
 
@@ -497,15 +496,17 @@ const Layout = () => {
                 </div>
               )}
             </div>
-            {localStorage.getItem('use_offline_mode') === 'true' && (
-              <span className="flex items-center space-x-1 px-2.5 py-1 bg-amber-500/10 border border-amber-500/20 text-amber-600 dark:text-amber-400 font-bold rounded text-[10px] uppercase tracking-wider select-none">
-                <span className="w-1.5 h-1.5 bg-amber-500 rounded-full animate-pulse mr-1"></span>
-                Offline Mode
-              </span>
-            )}
+            <div 
+              onClick={() => navigate('/auth')}
+              title="Current Active License Key - Click to manage licenses"
+              className="flex items-center space-x-1.5 px-2.5 py-1 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700/80 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 font-mono text-[11px] rounded-lg transition-colors cursor-pointer"
+            >
+              <KeyRound className="w-3.5 h-3.5 text-primary shrink-0" />
+              <span className="font-semibold">{activeLicense?.license_key || 'Active License'}</span>
+            </div>
+            <BackupStatusBadge />
           </div>
           <div className="flex items-center space-x-3">
-            <SyncStatusBadge />
             {isInactive && (
               <div className="hidden md:flex items-center space-x-2 bg-red-50 dark:bg-red-900/20 px-3 py-1 rounded-full border border-red-100 dark:border-red-800 animate-pulse transition-all">
                 <AlertTriangle className="w-3.5 h-3.5 text-red-500" />

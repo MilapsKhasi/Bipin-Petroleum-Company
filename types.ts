@@ -1,4 +1,37 @@
 
+export interface License {
+  id: string;
+  user_id: string;
+  license_status: 'Active' | 'Expired' | 'Trial' | 'Suspended';
+  trial_start?: string | null;
+  trial_end?: string | null;
+  created_at: string;
+  updated_at: string;
+  edition: string;
+  license_key: string;
+}
+
+export interface LoginVerification {
+  id: string;
+  user_id: string;
+  created_at: string;
+  verified_at: string;
+}
+
+export interface Profile {
+  id: string;
+  active_company_id?: string | null;
+  created_at: string;
+  is_developer: boolean;
+  user_id: string;
+}
+
+export interface User {
+  id: string;
+  email: string;
+  created_at: string;
+}
+
 export interface Vendor {
   id: string;
   name: string;

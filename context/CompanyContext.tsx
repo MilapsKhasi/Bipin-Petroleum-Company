@@ -1,13 +1,14 @@
-
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
 import { migrateCustomersToParties } from '../utils/partiesMigration';
+import { getActiveLicense, DEFAULT_LICENSE_KEY, ensureDefaultWorkspaceForLicense } from '../lib/licenseManager';
 
 interface Company {
   id: string;
   name: string;
   gstin?: string;
   address?: string;
+  license_key?: string;
 }
 
 interface CompanyContextType {
@@ -26,95 +27,53 @@ export const CompanyProvider: React.FC<{ children: React.ReactNode }> = ({ child
   const refresh = async () => {
     setLoading(true);
     try {
-      const { data, error } = await supabase.auth.getSession();
-      if (error) {
-        if (error.message?.includes('Failed to fetch') || error.message?.includes('NetworkError')) {
-          console.warn("Context refresh session offline warning:", error.message);
-        } else {
-          console.error("Context refresh session error:", error);
-        }
-        if (!error.message?.includes('Failed to fetch') && !error.message?.includes('NetworkError')) {
-          localStorage.clear();
-          try {
-            await supabase.auth.signOut({ scope: 'local' });
-          } catch (signOutError) {
-            console.error("Local sign out error during context recovery:", signOutError);
-          }
-        }
-        setActiveCompany(null);
-        return;
-      }
-      const session = data?.session;
-      if (!session) {
-        setActiveCompany(null);
-        return;
-      }
+      const activeLic = getActiveLicense();
+      const licKey = activeLic?.license_key || DEFAULT_LICENSE_KEY;
 
-      const isRealUser = session.user.id !== 'local-user-1';
+      const { data: sessionData } = await supabase.auth.getSession();
+      const userId = sessionData?.session?.user?.id || activeLic?.user_id;
 
-      // 1. Check profiles table for active_company_id
-      const { data: profile } = await supabase
-        .from('profiles')
-        .select('active_company_id')
-        .eq('id', session.user.id)
-        .maybeSingle();
+      // Query all companies and filter strictly by account user_id
+      const { data: userCompanies } = await supabase
+        .from('companies')
+        .select('*')
+        .eq('is_deleted', false)
+        .order('name');
+
+      const filtered = (userCompanies || []).filter((c: any) => {
+        if (!userId) return false;
+        return c.user_id === userId || c.created_by === userId;
+      });
 
       const storedId = localStorage.getItem('activeCompanyId');
-      let targetId = profile?.active_company_id || storedId;
+      const validStoredCompany = storedId ? filtered.find((c: any) => c.id === storedId) : null;
 
-      if (isRealUser && targetId === 'local-company-1') {
-        targetId = null;
-        localStorage.removeItem('activeCompanyId');
-        localStorage.removeItem('activeCompanyName');
+      if (validStoredCompany) {
+        setActiveCompany(validStoredCompany);
+        localStorage.setItem('activeCompanyId', validStoredCompany.id);
+        localStorage.setItem('activeCompanyName', validStoredCompany.name);
+        setLoading(false);
+        return;
       }
-
-      if (targetId) {
-        const { data: company } = await supabase
-          .from('companies')
-          .select('*')
-          .eq('id', targetId)
-          .eq('is_deleted', false)
-          .maybeSingle();
-
-        if (company && (!isRealUser || company.id !== 'local-company-1')) {
-          setActiveCompany(company);
-          localStorage.setItem('activeCompanyId', company.id);
-          localStorage.setItem('activeCompanyName', company.name);
-          setLoading(false);
-          return;
-        }
-      }
-
-      // If no valid active company target found, load actual user workspaces
-      let query = supabase.from('companies').select('*').eq('is_deleted', false);
-      if (isRealUser) {
-        query = query.or(`created_by.eq.${session.user.id},user_id.eq.${session.user.id}`);
-      }
-      const { data: userCompanies } = await query.order('name');
-      const filtered = (userCompanies || []).filter((c: any) => {
-        if (isRealUser && c.id === 'local-company-1') return false;
-        return true;
-      });
 
       if (filtered.length > 0) {
         const firstComp = filtered[0];
         setActiveCompany(firstComp);
         localStorage.setItem('activeCompanyId', firstComp.id);
         localStorage.setItem('activeCompanyName', firstComp.name);
-        if (isRealUser) {
-          await supabase.from('profiles').upsert({ id: session.user.id, active_company_id: firstComp.id });
+      } else if (userId) {
+        // If this user account has no workspaces yet, automatically ensure default workspace for this user
+        const created = await ensureDefaultWorkspaceForLicense(licKey, userId);
+        if (created) {
+          setActiveCompany(created);
+        } else {
+          setActiveCompany(null);
         }
       } else {
         setActiveCompany(null);
-        localStorage.removeItem('activeCompanyId');
-        localStorage.removeItem('activeCompanyName');
       }
     } catch (err: any) {
-      if (err?.message?.includes('Failed to fetch') || err?.name === 'TypeError') {
-        console.warn("Context refresh offline unexpected warning:", err?.message || err);
-      } else {
-        console.error("Context refresh error:", err);
-      }
+      console.error('Context refresh error:', err);
     } finally {
       setLoading(false);
     }
@@ -122,24 +81,24 @@ export const CompanyProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
   const setCompany = async (company: Company) => {
     try {
-      const { data, error } = await supabase.auth.getSession();
-      if (error) {
-        console.error("Context setCompany session error:", error);
-        return;
-      }
-      const session = data?.session;
-      if (!session) return;
-
-      // Sync to Supabase Profile for RLS
-      await supabase
-        .from('profiles')
-        .upsert({ id: session.user.id, active_company_id: company.id });
-
       localStorage.setItem('activeCompanyId', company.id);
       localStorage.setItem('activeCompanyName', company.name);
       setActiveCompany(company);
+
+      // Update profiles active_company_id
+      const { data: sessionData } = await supabase.auth.getSession();
+      const userId = sessionData?.session?.user?.id;
+      if (userId) {
+        await supabase.from('profiles').upsert({
+          id: `prof-${userId}`,
+          user_id: userId,
+          active_company_id: company.id,
+          is_developer: false,
+          created_at: new Date().toISOString()
+        });
+      }
     } catch (err) {
-      console.error("Context setCompany error:", err);
+      console.error('Context setCompany error:', err);
     }
   };
 

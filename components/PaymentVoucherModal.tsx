@@ -258,6 +258,23 @@ export const PaymentVoucherModal: React.FC<PaymentVoucherModalProps> = ({
 
       if (res && res.data && res.data[0]) {
         await syncTransactionToCashbook(res.data[0]);
+
+        // Save into payments_in or payments_out store
+        const specificPaymentTable = isReceipt ? 'payments_in' : 'payments_out';
+        const paymentRecord = {
+          id: res.data[0].id,
+          company_id: cid,
+          date: date,
+          party: partyName,
+          party_name: partyName,
+          amount: parsedAmount,
+          account: account.trim(),
+          voucher_no: generatedNo,
+          type: isReceipt ? 'Receive payment' : 'Make payment',
+          description: finalDesc,
+          created_at: new Date().toISOString()
+        };
+        await safeSupabaseSave(specificPaymentTable, paymentRecord);
       }
 
       // Update linked bills status to 'Paid'

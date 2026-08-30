@@ -1,6 +1,5 @@
-
 import React, { useEffect, useState } from 'react';
-import { HashRouter as Router, Routes, Route, Navigate, useLocation } from 'react-router-dom';
+import { HashRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import Layout from './components/Layout';
 import Dashboard from './pages/Dashboard';
 import Parties from './pages/Parties';
@@ -21,16 +20,14 @@ import DeliveryChallans from './pages/DeliveryChallans';
 import SplashScreen from './components/SplashScreen';
 import { CompanyProvider, useCompany } from './context/CompanyContext';
 import { supabase } from './lib/supabase';
-import { Database, AlertCircle, Copy, Check } from 'lucide-react';
-import { processInactivity, recordActivity } from './utils/activityTracker';
+import { getActiveLicense } from './lib/licenseManager';
+import { processInactivity } from './utils/activityTracker';
 
 const AppContent = () => {
   const [session, setSession] = useState<any>(null);
   const [authLoading, setAuthLoading] = useState(true);
   const [showSplash, setShowSplash] = useState(true);
   const [isSplashExiting, setIsSplashExiting] = useState(false);
-  const [dbError, setDbError] = useState<string | null>(null);
-  const [copied, setCopied] = useState(false);
   
   const { activeCompany, loading: companyLoading } = useCompany();
 
@@ -38,60 +35,15 @@ const AppContent = () => {
     const splashTimer = setTimeout(() => {
       setIsSplashExiting(true);
       setTimeout(() => setShowSplash(false), 700);
-    }, 2500);
-
-    const checkSchema = async (sess: any) => {
-      if (!sess) return;
-      try {
-        const { error } = await supabase.from('companies').select('id').limit(1);
-        if (error) {
-          if (error.message.includes('not found') || error.message.includes('does not exist')) {
-            setDbError("SCHEMA_MISSING");
-          } else if (error.message.includes('Failed to fetch') || error.message.includes('NetworkError')) {
-            setDbError("CONNECTION_ERROR");
-          }
-        }
-      } catch (e: any) {
-        if (e.message?.includes('Failed to fetch') || e.message?.includes('NetworkError') || e.name === 'TypeError') {
-          console.warn("Schema check offline / connection warning:", e.message || e);
-          setDbError("CONNECTION_ERROR");
-        } else {
-          console.error("Schema check error:", e);
-        }
-      }
-    };
+    }, 2000);
 
     const initAuth = async () => {
       try {
-        const { data, error } = await supabase.auth.getSession();
-        
-        if (error) {
-          if (error.message?.includes('Failed to fetch') || error.message?.includes('NetworkError')) {
-            console.warn("Auth init session offline warning:", error.message);
-            setDbError("CONNECTION_ERROR");
-          } else {
-            console.error("Auth init session error:", error);
-            localStorage.removeItem('local_session_user');
-            setSession(null);
-            setAuthLoading(false);
-            return;
-          }
-        }
-
+        const { data } = await supabase.auth.getSession();
         const currentSession = data?.session || null;
         setSession(currentSession);
-        if (currentSession) {
-          await checkSchema(currentSession);
-          // Record initial activity on load if session exists
-          recordActivity(currentSession.user.id, currentSession.user.email || '');
-        }
       } catch (e: any) {
-        if (e.message?.includes('Failed to fetch') || e.message?.includes('NetworkError') || e.name === 'TypeError') {
-          console.warn("Auth init session offline unexpected warning:", e.message || e);
-          setDbError("CONNECTION_ERROR");
-        } else {
-          console.error("Auth init unexpected error:", e);
-        }
+        console.error("Auth init unexpected error:", e);
       } finally {
         setAuthLoading(false);
       }
@@ -99,22 +51,13 @@ const AppContent = () => {
 
     initAuth();
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event: any, newSession: any) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event: any, newSession: any) => {
       setSession(newSession);
-      if (event === 'SIGNED_IN' && newSession) {
-        checkSchema(newSession);
-        recordActivity(newSession.user.id, newSession.user.email || '');
-      }
-      if (event === 'SIGNED_OUT') {
-        localStorage.removeItem('local_session_user');
-        setDbError(null);
-      }
     });
 
-    // Periodically check for inactivity
     const inactivityInterval = setInterval(() => {
       processInactivity();
-    }, 60000); // Check every minute
+    }, 60000);
 
     return () => {
       clearTimeout(splashTimer);
@@ -122,107 +65,6 @@ const AppContent = () => {
       clearInterval(inactivityInterval);
     };
   }, []);
-
-  const copySql = () => {
-    const sql = `
--- 0. Clean up any old/conflicting triggers, functions, and tables to prevent uuid/bigint type conflicts
-DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users CASCADE;
-DROP TRIGGER IF EXISTS on_user_created ON auth.users CASCADE;
-DROP TRIGGER IF EXISTS sync_user ON auth.users CASCADE;
-DROP FUNCTION IF EXISTS public.handle_new_user() CASCADE;
-DROP FUNCTION IF EXISTS public.sync_user() CASCADE;
-
-DROP TABLE IF EXISTS public.profiles CASCADE;
-DROP TABLE IF EXISTS public.companies CASCADE;
-DROP TABLE IF EXISTS public.login_verifications CASCADE;
-DROP TABLE IF EXISTS public.users CASCADE;
-DROP TABLE IF EXISTS public.vendors CASCADE;
-DROP TABLE IF EXISTS public.customers CASCADE;
-DROP TABLE IF EXISTS public.purchase_bills CASCADE;
-DROP TABLE IF EXISTS public.sales_invoices CASCADE;
-DROP TABLE IF EXISTS public.stock_items CASCADE;
-DROP TABLE IF EXISTS public.duties_taxes CASCADE;
-DROP TABLE IF EXISTS public.cashbooks CASCADE;
-
--- 1. Create Profiles Table for Multi-tenancy Context
-CREATE TABLE public.profiles (
-  id uuid REFERENCES auth.users ON DELETE CASCADE PRIMARY KEY,
-  active_company_id uuid,
-  full_name text,
-  created_at timestamptz DEFAULT now()
-);
-
--- 2. Create Core Tables
-CREATE TABLE public.companies (
-  id uuid DEFAULT gen_random_uuid() PRIMARY KEY, 
-  name text NOT NULL, 
-  gstin text, 
-  address text, 
-  is_deleted boolean DEFAULT false, 
-  created_at timestamptz DEFAULT now(), 
-  user_id uuid DEFAULT auth.uid(),
-  created_by uuid DEFAULT auth.uid()
-);
-
--- 2.1 Create OTP Verification Table
-CREATE TABLE public.login_verifications (
-  id uuid DEFAULT gen_random_uuid() PRIMARY KEY,
-  user_id uuid REFERENCES auth.users(id) ON DELETE CASCADE,
-  otp text NOT NULL,
-  expires_at timestamptz NOT NULL,
-  created_at timestamptz DEFAULT now()
-);
-
--- 2.2 Create Users Table
-CREATE TABLE public.users (
-  id uuid PRIMARY KEY,
-  email text NOT NULL,
-  created_at timestamptz DEFAULT now()
-);
-
--- 2.3 Create Vendors and Customers Tables
-CREATE TABLE public.vendors (id uuid DEFAULT gen_random_uuid() PRIMARY KEY, company_id uuid REFERENCES public.companies(id) ON DELETE CASCADE, name text NOT NULL, email text, phone text, gstin text, pan text, state text, account_number text, account_name text, ifsc_code text, address text, balance numeric DEFAULT 0, party_type text DEFAULT 'vendor', is_customer boolean DEFAULT false, is_deleted boolean DEFAULT false, created_at timestamptz DEFAULT now());
-CREATE TABLE public.customers (id uuid DEFAULT gen_random_uuid() PRIMARY KEY, company_id uuid REFERENCES public.companies(id) ON DELETE CASCADE, name text NOT NULL, email text, phone text, gstin text, pan text, state text, account_number text, account_name text, ifsc_code text, address text, balance numeric DEFAULT 0, party_type text DEFAULT 'customer', is_customer boolean DEFAULT true, is_deleted boolean DEFAULT false, created_at timestamptz DEFAULT now());
-
--- 2.4 Create Bills and Invoices Tables
-CREATE TABLE public.purchase_bills (id uuid DEFAULT gen_random_uuid() PRIMARY KEY, company_id uuid REFERENCES public.companies(id) ON DELETE CASCADE, vendor_name text NOT NULL, bill_number text NOT NULL, date date NOT NULL DEFAULT CURRENT_DATE, total_without_gst numeric DEFAULT 0, total_gst numeric DEFAULT 0, grand_total numeric DEFAULT 0, status text DEFAULT 'Pending', is_deleted boolean DEFAULT false, description text, items jsonb DEFAULT '{}'::jsonb, round_off numeric DEFAULT 0, created_at timestamptz DEFAULT now());
-CREATE TABLE public.sales_invoices (id uuid DEFAULT gen_random_uuid() PRIMARY KEY, company_id uuid REFERENCES public.companies(id) ON DELETE CASCADE, customer_name text NOT NULL, invoice_number text NOT NULL, date date NOT NULL DEFAULT CURRENT_DATE, total_without_gst numeric DEFAULT 0, total_gst numeric DEFAULT 0, grand_total numeric DEFAULT 0, status text DEFAULT 'Pending', is_deleted boolean DEFAULT false, description text, items jsonb DEFAULT '{}'::jsonb, round_off numeric DEFAULT 0, created_at timestamptz DEFAULT now());
-
--- 2.5 Create Stock, Duties and Taxes, and Cashbook Tables
-CREATE TABLE public.stock_items (id uuid DEFAULT gen_random_uuid() PRIMARY KEY, company_id uuid REFERENCES public.companies(id) ON DELETE CASCADE, name text NOT NULL, hsn text, rate numeric DEFAULT 0, selling_price numeric DEFAULT 0, tax_rate numeric DEFAULT 0, unit text DEFAULT 'PCS', in_stock numeric DEFAULT 0, sku text, description text, kg_per_bag numeric DEFAULT 0, is_deleted boolean DEFAULT false, created_at timestamptz DEFAULT now());
-CREATE TABLE public.duties_taxes (id uuid DEFAULT gen_random_uuid() PRIMARY KEY, company_id uuid REFERENCES public.companies(id) ON DELETE CASCADE, name text NOT NULL, type text DEFAULT 'Charge', calc_method text DEFAULT 'Percentage', rate numeric DEFAULT 0, fixed_amount numeric DEFAULT 0, apply_on text DEFAULT 'Subtotal', applicable_to text DEFAULT 'Both', is_default boolean DEFAULT false, is_deleted boolean DEFAULT false, created_at timestamptz DEFAULT now());
-CREATE TABLE public.cashbooks (id uuid DEFAULT gen_random_uuid() PRIMARY KEY, company_id uuid REFERENCES public.companies(id) ON DELETE CASCADE, date date NOT NULL, income_total numeric DEFAULT 0, expense_total numeric DEFAULT 0, balance numeric DEFAULT 0, raw_data jsonb DEFAULT '{}'::jsonb, is_deleted boolean DEFAULT false, created_at timestamptz DEFAULT now());
-
--- 3. Enable RLS
-ALTER TABLE public.profiles ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.companies ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.users ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.vendors ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.customers ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.purchase_bills ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.sales_invoices ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.stock_items ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.duties_taxes ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.cashbooks ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.login_verifications ENABLE ROW LEVEL SECURITY;
-
--- 4. Set Policies
-CREATE POLICY "Users can manage own profile" ON public.profiles FOR ALL TO authenticated USING (auth.uid() = id);
-CREATE POLICY "Manage own companies" ON public.companies FOR ALL TO authenticated USING (auth.uid() = created_by);
-CREATE POLICY "Manage own users" ON public.users FOR ALL TO authenticated USING (auth.uid() = id);
-CREATE POLICY "Manage company vendors" ON public.vendors FOR ALL TO authenticated USING (company_id IN (SELECT id FROM companies WHERE created_by = auth.uid()));
-CREATE POLICY "Manage company customers" ON public.customers FOR ALL TO authenticated USING (company_id IN (SELECT id FROM companies WHERE created_by = auth.uid()));
-CREATE POLICY "Manage company purchase bills" ON public.purchase_bills FOR ALL TO authenticated USING (company_id IN (SELECT id FROM companies WHERE created_by = auth.uid()));
-CREATE POLICY "Manage company sales" ON public.sales_invoices FOR ALL TO authenticated USING (company_id IN (SELECT id FROM companies WHERE created_by = auth.uid()));
-CREATE POLICY "Manage company stock" ON public.stock_items FOR ALL TO authenticated USING (company_id IN (SELECT id FROM companies WHERE created_by = auth.uid()));
-CREATE POLICY "Manage company taxes" ON public.duties_taxes FOR ALL TO authenticated USING (company_id IN (SELECT id FROM companies WHERE created_by = auth.uid()));
-CREATE POLICY "Manage company cashbook" ON public.cashbooks FOR ALL TO authenticated USING (company_id IN (SELECT id FROM companies WHERE created_by = auth.uid()));
-CREATE POLICY "Manage own OTPs" ON public.login_verifications FOR ALL TO authenticated USING (auth.uid() = user_id);
-    `.trim();
-    navigator.clipboard.writeText(sql);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
-  };
 
   if (showSplash) return <SplashScreen isExiting={isSplashExiting} />;
 
@@ -232,64 +74,31 @@ CREATE POLICY "Manage own OTPs" ON public.login_verifications FOR ALL TO authent
     </div>
   );
 
-  if (dbError === "CONNECTION_ERROR" || (session && dbError === "SCHEMA_MISSING")) {
-    const isConnectionError = dbError === "CONNECTION_ERROR";
-    return (
-      <div className="min-h-screen bg-slate-50 flex items-center justify-center p-6">
-        <div className="max-w-2xl w-full bg-white rounded-xl shadow-sm border border-slate-200 p-8 text-center">
-          <div className="w-16 h-16 bg-primary/10 rounded-full flex items-center justify-center mx-auto mb-6">
-            {isConnectionError ? <AlertCircle className="w-8 h-8 text-red-500" /> : <Database className="w-8 h-8 text-primary" />}
-          </div>
-          <h1 className="text-2xl font-bold text-slate-900 mb-2 capitalize">
-            {isConnectionError ? "Connection Error" : "Database Setup Required"}
-          </h1>
-          <p className="text-slate-500 mb-8 capitalize">
-            {isConnectionError 
-              ? "Unable to reach the server. Please check your internet connection or ensure the Supabase project is active." 
-              : "Required tables haven't been created yet."}
-          </p>
-          
-          {!isConnectionError && (
-            <div className="bg-slate-900 rounded-lg p-6 text-left mb-6 relative group">
-              <pre className="text-[10px] text-slate-300 font-mono overflow-x-auto whitespace-pre-wrap">
-                {`CREATE TABLE public.profiles (...);\nCREATE TABLE public.companies (...);\n...`}
-              </pre>
-              <button onClick={copySql} className="absolute top-4 right-4 bg-white/10 hover:bg-white/20 text-white px-3 py-1.5 rounded text-xs font-medium flex items-center capitalize">
-                {copied ? <Check className="w-3 h-3 mr-1" /> : <Copy className="w-3 h-3 mr-1" />}
-                {copied ? 'Copied!' : 'Copy Sql'}
-              </button>
-            </div>
-          )}
-          
-          <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
-            <button onClick={() => window.location.reload()} className="px-8 py-3 bg-primary text-white font-medium rounded-lg hover:bg-primary-dark capitalize">
-              {isConnectionError ? "Retry Connection" : "Refresh After Running Sql"}
-            </button>
-            <button 
-              onClick={() => {
-                localStorage.setItem('use_offline_mode', 'true');
-                window.location.reload();
-              }} 
-              className="px-8 py-3 bg-slate-100 hover:bg-slate-200 text-slate-700 font-medium rounded-lg border border-slate-200 capitalize"
-            >
-              Continue in Offline/Local Mode
-            </button>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  // Simplified Authentication Guard: Just check for session
-  const authenticated = !!session;
+  // Authenticated means active license session is present
+  const authenticated = !!session || !!getActiveLicense();
 
   return (
     <div className="animate-in fade-in duration-500">
       <Routes>
-        <Route path="/setup" element={authenticated ? <Navigate to="/companies" replace /> : <Auth />} />
-        <Route path="/companies" element={authenticated ? <Companies /> : <Navigate to="/setup" replace />} />
+        {/* License Verification Route */}
+        <Route path="/auth" element={authenticated ? <Navigate to="/companies" replace /> : <Auth />} />
+        <Route path="/setup" element={<Navigate to="/auth" replace />} />
+        <Route path="/license" element={<Navigate to="/auth" replace />} />
         
-        <Route path="/" element={authenticated ? (activeCompany ? <Layout /> : <Navigate to="/companies" replace />) : (<Navigate to="/setup" replace />)}>
+        {/* Workspaces (Companies) Selection Screen */}
+        <Route path="/companies" element={authenticated ? <Companies /> : <Navigate to="/auth" replace />} />
+        
+        {/* Workspace Active Dashboard & Features */}
+        <Route 
+          path="/" 
+          element={
+            authenticated ? (
+              activeCompany ? <Layout /> : <Navigate to="/companies" replace />
+            ) : (
+              <Navigate to="/auth" replace />
+            )
+          }
+        >
           <Route index element={<Dashboard />} />
           <Route path="masters" element={<Masters />} />
           <Route path="purchases" element={<Purchases />} />

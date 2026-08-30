@@ -1,369 +1,370 @@
-
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Loader2, Database, AlertCircle, Copy, Check, ChevronDown, ChevronUp } from 'lucide-react';
+import { 
+  KeyRound, 
+  CheckCircle2, 
+  AlertCircle, 
+  ArrowRight, 
+  HardDrive, 
+  Loader2, 
+  Mail, 
+  ArrowLeft,
+  ShieldCheck,
+  Sparkles
+} from 'lucide-react';
+import Logo from '../components/Logo';
+import { 
+  findLicenseByUserEmail,
+  validateLicenseKey, 
+  setActiveLicense,
+  normalizeLicenseKey,
+  LicenseRecord
+} from '../lib/licenseManager';
 import { supabase } from '../lib/supabase';
+import { useCompany } from '../context/CompanyContext';
+import { User } from '../types';
 
-const Auth = () => {
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [isLogin, setIsLogin] = useState(true);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [showSqlHelp, setShowSqlHelp] = useState(false);
-  const [copied, setCopied] = useState(false);
+type AuthStep = 'email' | 'license';
+
+const Auth: React.FC = () => {
+  const [step, setStep] = useState<AuthStep>('email');
+  
+  // Step 1: Email state
+  const [emailInput, setEmailInput] = useState('');
+  const [emailLoading, setEmailLoading] = useState(false);
+  const [emailError, setEmailError] = useState<string | null>(null);
+  
+  // Matched User & License
+  const [matchedUser, setMatchedUser] = useState<User | null>(null);
+  const [matchedLicense, setMatchedLicense] = useState<LicenseRecord | null>(null);
+
+  // Step 2: License state
+  const [licenseInput, setLicenseInput] = useState('');
+  const [licenseLoading, setLicenseLoading] = useState(false);
+  const [licenseError, setLicenseError] = useState<string | null>(null);
+  const [successMsg, setSuccessMsg] = useState<string | null>(null);
+  
   const navigate = useNavigate();
+  const { refresh: refreshCompany } = useCompany();
 
-  const handleLogin = async (e: React.FormEvent) => {
+  // Handle email search & lookup
+  const handleEmailSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setLoading(true);
-    setError(null);
-
-    // Clear offline flag when attempting online account authentication
-    localStorage.removeItem('use_offline_mode');
-    if (localStorage.getItem('activeCompanyId') === 'local-company-1') {
-      localStorage.removeItem('activeCompanyId');
-      localStorage.removeItem('activeCompanyName');
+    const cleanEmail = emailInput.trim();
+    if (!cleanEmail) {
+      setEmailError('Please enter your registered email address.');
+      return;
     }
 
-    try {
-      if (isLogin) {
-        const { data: authData, error: loginError } = await supabase.auth.signInWithPassword({ email, password });
-        if (loginError) throw loginError;
-        
-        // Save user info to 'users' table
-        if (authData?.user) {
-          try {
-            await supabase.from('users').upsert({
-              id: authData.user.id,
-              email: authData.user.email,
-              created_at: authData.user.created_at || new Date().toISOString()
-            });
-          } catch (upsertErr) {
-            console.error("Failed to upsert to users table:", upsertErr);
-          }
-        }
+    setEmailLoading(true);
+    setEmailError(null);
 
-        // On success, navigate to companies selection immediately
-        navigate('/companies');
-      } else {
-        const { data: signUpData, error: signUpError } = await supabase.auth.signUp({ email, password });
-        if (signUpError) throw signUpError;
-        
-        // Save user info to 'users' table
-        if (signUpData?.user) {
-          try {
-            await supabase.from('users').upsert({
-              id: signUpData.user.id,
-              email: signUpData.user.email,
-              created_at: signUpData.user.created_at || new Date().toISOString()
-            });
-          } catch (upsertErr) {
-            console.error("Failed to upsert to users table:", upsertErr);
-          }
-        }
-        alert('Check your email for the confirmation link!');
+    try {
+      const res = await findLicenseByUserEmail(cleanEmail);
+      if (!res.success || !res.license) {
+        setEmailError(res.message || 'No registered license found for this email address.');
+        setEmailLoading(false);
+        return;
       }
+
+      setMatchedUser(res.user || null);
+      setMatchedLicense(res.license);
+      // Automatically populate license key from database 'license_key' column
+      setLicenseInput(res.license.license_key);
+      setStep('license');
+      setLicenseError(null);
     } catch (err: any) {
-      console.error("Auth error details:", err);
-      let errorMessage = err.message || 'Authentication failed';
-      
-      if (errorMessage.includes('Failed to fetch') || errorMessage.includes('NetworkError') || errorMessage.includes('Invalid path') || err.name === 'TypeError') {
-        errorMessage = "Connection Error: Unable to reach the server. Please check your internet connection or ensure the Supabase project URL is valid.";
-      }
-      
-      setError(errorMessage);
+      console.error('Email lookup error:', err);
+      setEmailError(err?.message || 'Failed to verify email address.');
     } finally {
-      setLoading(false);
+      setEmailLoading(false);
+    }
+  };
+
+  // Handle license activation
+  const handleActivateLicense = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const trimmed = licenseInput.trim();
+    if (!trimmed) {
+      setLicenseError('Please enter your license key to proceed.');
+      return;
+    }
+
+    setLicenseLoading(true);
+    setLicenseError(null);
+    setSuccessMsg(null);
+
+    try {
+      const result = await validateLicenseKey(trimmed);
+      
+      if (!result.valid || !result.license) {
+        setLicenseError(result.message || 'Invalid license key. Please check and try again.');
+        setLicenseLoading(false);
+        return;
+      }
+
+      // If we have matched user, ensure license retains that user_id
+      const finalLicense = {
+        ...result.license,
+        user_id: matchedUser?.id || result.license.user_id,
+      };
+
+      // Store license and create active session
+      await setActiveLicense(finalLicense);
+      
+      const email = matchedUser?.email || `${normalizeLicenseKey(finalLicense.license_key).toLowerCase()}@offline.bipinpetroleum.com`;
+      await supabase.auth.signInWithPassword({ email, userId: finalLicense.user_id });
+
+      await refreshCompany();
+
+      setSuccessMsg('License verified successfully. Redirecting to workspaces...');
+
+      setTimeout(() => {
+        navigate('/companies', { replace: true });
+      }, 400);
+    } catch (err: any) {
+      console.error('License verification error:', err);
+      setLicenseError(err?.message || 'Failed to verify license key.');
+    } finally {
+      setLicenseLoading(false);
     }
   };
 
   return (
-    <div className="min-h-screen bg-[#F7F8FC] flex items-center justify-center p-6 font-sans">
-      <div className={`w-full ${showSqlHelp ? 'max-w-2xl' : 'max-w-sm'} bg-primary rounded-[10px] p-2 transition-all duration-300 border border-slate-200/20 shadow-none`}>
-        <div className="text-center py-6">
-          <h1 className="text-xl font-bold text-white tracking-tight">Bipin Petroleum Co.</h1>
-          <p className="text-[11px] font-semibold text-blue-100 tracking-widest uppercase mt-0.5">Powered by ZenterPrime</p>
-          <h2 className="text-sm font-medium text-blue-100/80 mt-3 pt-3 border-t border-white/10">
-            {isLogin ? 'Welcome Back' : 'Create Account'}
-          </h2>
+    <div className="min-h-screen bg-[#F7F8FC] flex flex-col items-center justify-center p-4 sm:p-6 font-sans text-slate-900 selection:bg-primary/20">
+      <div className="w-full max-w-md bg-white border border-slate-200 rounded-xl shadow-xs p-6 sm:p-8 space-y-6">
+        
+        {/* Header Branding */}
+        <div className="text-center space-y-2">
+          <div className="flex justify-center mb-2">
+            <Logo size={48} />
+          </div>
+          <h1 className="text-xl font-bold tracking-tight text-slate-900">
+            Bipin Petroleum Co.
+          </h1>
+          <p className="text-xs font-semibold uppercase tracking-widest text-slate-400">
+            Powered by ZenterPrime
+          </p>
         </div>
 
-        <div className="bg-white rounded-[10px] p-6 pb-10 shadow-none">
-          <form onSubmit={handleLogin} className="space-y-6">
-            {error && (
-              <div className="space-y-3">
-                <div className="p-3 bg-red-50 border border-red-100 text-red-600 text-xs rounded-[10px] font-semibold animate-shake flex items-start">
-                  <AlertCircle className="w-4 h-4 text-red-500 mr-2 shrink-0 mt-0.5" />
-                  <span>{error}</span>
-                </div>
-                {error.toLowerCase().includes("saving new user") && (
-                  <div className="p-3.5 bg-amber-50 border border-amber-200 text-amber-900 text-xs rounded-[10px] space-y-2 leading-relaxed">
-                    <p className="font-bold text-amber-950 flex items-center">
-                      <Database className="w-4 h-4 mr-1.5" />
-                      Trigger / Schema Mismatch Detected
-                    </p>
-                    <p>An old or mismatched trigger in your Supabase database is blocking registration. Run the complete Database Setup SQL below to clear conflicting triggers and set up the correct schema.</p>
-                    <button
-                      type="button"
-                      onClick={() => setShowSqlHelp(true)}
-                      className="px-3 py-1.5 bg-amber-600 hover:bg-amber-700 text-white rounded font-bold text-[10px] uppercase tracking-wider"
-                    >
-                      View Setup SQL Script
-                    </button>
-                  </div>
-                )}
+        {/* STEP 1: ENTER REGISTERED EMAIL */}
+        {step === 'email' && (
+          <div className="space-y-5 animate-in fade-in duration-200">
+            {/* Info Box */}
+            <div className="bg-slate-50 border border-slate-200/80 rounded-lg p-4 space-y-2">
+              <div className="flex items-center space-x-2 text-slate-700">
+                <Mail className="w-4 h-4 text-primary shrink-0" />
+                <span className="text-xs font-bold uppercase tracking-wider">Account Authorization</span>
               </div>
-            )}
-
-            <div className="space-y-5">
-              <div className="space-y-1.5">
-                <label className="text-sm font-semibold text-slate-900 ml-1">Email Address</label>
-                <input
-                  type="email"
-                  required
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  className="w-full px-4 py-3 bg-[#f9f9f9] border border-slate-200 rounded-[10px] outline-none focus:border-primary font-medium text-slate-900 transition-all placeholder:text-slate-300 text-sm shadow-none"
-                  placeholder="Your Email Address"
-                />
-              </div>
-
-              <div className="space-y-1.5">
-                <label className="text-sm font-semibold text-slate-900 ml-1">Password</label>
-                <input
-                  type="password"
-                  required
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  className="w-full px-4 py-3 bg-[#f9f9f9] border border-slate-200 rounded-[10px] outline-none focus:border-primary font-medium text-slate-900 transition-all placeholder:text-slate-300 text-sm shadow-none"
-                  placeholder="Your Password"
-                />
-              </div>
+              <p className="text-xs text-slate-500 leading-relaxed">
+                Enter your registered email address to find your account and retrieve your authorized license key automatically.
+              </p>
             </div>
 
-            <div className="pt-2 space-y-4">
-              <button
-                type="submit"
-                disabled={loading}
-                className="w-full py-3.5 rounded-[10px] font-bold bg-primary text-white hover:bg-primary-dark transition-all flex items-center justify-center disabled:opacity-50 text-xs tracking-[0.15em] border border-transparent active:scale-[0.98] shadow-none"
-              >
-                {loading ? <Loader2 className="w-5 h-5 animate-spin mr-2" /> : 'GET STARTED'} 
-              </button>
+            <form onSubmit={handleEmailSubmit} className="space-y-4">
+              <div className="space-y-1.5">
+                <label htmlFor="registered-email-input" className="block text-xs font-bold uppercase tracking-wider text-slate-600">
+                  Registered Email Address
+                </label>
+                <div className="relative">
+                  <input
+                    id="registered-email-input"
+                    type="email"
+                    value={emailInput}
+                    onChange={(e) => {
+                      setEmailInput(e.target.value);
+                      if (emailError) setEmailError(null);
+                    }}
+                    placeholder="e.g. bhushanmehta1992@gmail.com"
+                    className="w-full pl-10 pr-3.5 py-2.5 bg-white border border-slate-300 focus:border-primary focus:ring-1 focus:ring-primary rounded-lg text-sm text-slate-900 outline-none transition-all placeholder:text-slate-400"
+                    autoFocus
+                    disabled={emailLoading}
+                    required
+                  />
+                  <Mail className="w-4 h-4 text-slate-400 absolute left-3.5 top-3 pointer-events-none" />
+                </div>
+              </div>
 
+              {emailError && (
+                <div className="p-3 bg-red-50 border border-red-200 text-red-700 text-xs rounded-lg flex items-start space-x-2">
+                  <AlertCircle className="w-4 h-4 text-red-500 shrink-0 mt-0.5" />
+                  <span>{emailError}</span>
+                </div>
+              )}
+
+              <button
+                id="find-license-btn"
+                type="submit"
+                disabled={emailLoading || !emailInput.trim()}
+                className="w-full py-2.5 px-4 bg-primary hover:bg-primary-dark text-white text-sm font-bold rounded-lg transition-all flex items-center justify-center space-x-2 shadow-xs cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {emailLoading ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    <span>Looking up license...</span>
+                  </>
+                ) : (
+                  <>
+                    <span>Find License Key</span>
+                    <ArrowRight className="w-4 h-4" />
+                  </>
+                )}
+              </button>
+            </form>
+
+            {/* Manual Switch */}
+            <div className="pt-2 text-center">
               <button
                 type="button"
                 onClick={() => {
-                  localStorage.setItem('use_offline_mode', 'true');
-                  localStorage.setItem('local_session_user', JSON.stringify({ id: 'local-user-1', email: 'offline@zenterprime.com', created_at: new Date().toISOString() }));
-                  localStorage.setItem('activeCompanyId', 'local-company-1');
-                  localStorage.setItem('activeCompanyName', 'Local Demo Company');
-                  window.location.href = '/';
+                  setLicenseInput('');
+                  setMatchedUser(null);
+                  setMatchedLicense(null);
+                  setStep('license');
                 }}
-                className="w-full py-3.5 rounded-[10px] font-bold bg-slate-100 hover:bg-slate-200 text-slate-700 transition-all flex items-center justify-center text-xs tracking-[0.1em] border border-slate-200"
+                className="text-xs text-primary hover:underline font-medium inline-flex items-center space-x-1 cursor-pointer"
               >
-                USE OFFLINE LOCAL MODE
+                <span>Or enter license key manually</span>
+                <KeyRound className="w-3.5 h-3.5" />
               </button>
-
-              <div className="flex flex-col space-y-3">
-                <button
-                  type="button"
-                  onClick={() => setIsLogin(!isLogin)}
-                  className="w-full text-center text-[10px] text-slate-400 font-medium text-xs leading-normal"
-                >
-                  {isLogin ? (
-                    <>Don't have an account? <span className="text-primary font-bold uppercase ml-1">SIGN UP</span></>
-                  ) : (
-                    <>Already have an account? <span className="text-primary font-bold uppercase ml-1">LOGIN</span></>
-                  )}
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => setShowSqlHelp(!showSqlHelp)}
-                  className="w-full text-center text-[10px] text-slate-400 hover:text-slate-600 font-bold flex items-center justify-center space-x-1 uppercase tracking-wider text-xs leading-normal pt-1"
-                >
-                  <Database className="w-3.5 h-3.5 mr-1 text-primary/70" />
-                  <span>{showSqlHelp ? 'Hide Setup SQL' : 'Database Setup SQL Instructions'}</span>
-                  {showSqlHelp ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
-                </button>
-              </div>
             </div>
-          </form>
+          </div>
+        )}
 
-          {showSqlHelp && (
-            <div className="mt-6 p-5 bg-slate-900 text-slate-100 rounded-[10px] border border-slate-800 text-xs space-y-3 animate-in fade-in slide-in-from-top-4 duration-300 text-left">
-              <div className="flex items-center justify-between">
-                <span className="font-bold text-emerald-400 uppercase tracking-wider text-[10px]">Database Setup SQL Script</span>
-                <div className="flex items-center space-x-2">
-                  <button
-                    type="button"
-                    onClick={async () => {
-                      const sql = `-- 0. Clean up any old/conflicting triggers, functions, and tables
-DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users CASCADE;
-DROP TRIGGER IF EXISTS on_user_created ON auth.users CASCADE;
-DROP TRIGGER IF EXISTS sync_user ON auth.users CASCADE;
-DROP FUNCTION IF EXISTS public.handle_new_user() CASCADE;
-DROP FUNCTION IF EXISTS public.sync_user() CASCADE;
-
-DROP TABLE IF EXISTS public.profiles CASCADE;
-DROP TABLE IF EXISTS public.companies CASCADE;
-DROP TABLE IF EXISTS public.login_verifications CASCADE;
-DROP TABLE IF EXISTS public.users CASCADE;
-DROP TABLE IF EXISTS public.vendors CASCADE;
-DROP TABLE IF EXISTS public.customers CASCADE;
-DROP TABLE IF EXISTS public.purchase_bills CASCADE;
-DROP TABLE IF EXISTS public.sales_invoices CASCADE;
-DROP TABLE IF EXISTS public.stock_items CASCADE;
-DROP TABLE IF EXISTS public.duties_taxes CASCADE;
-DROP TABLE IF EXISTS public.cashbooks CASCADE;
-
--- 1. Create Profiles Table for Multi-tenancy Context
-CREATE TABLE public.profiles (
-  id uuid REFERENCES auth.users ON DELETE CASCADE PRIMARY KEY,
-  active_company_id uuid,
-  full_name text,
-  created_at timestamptz DEFAULT now()
-);
-
--- 2. Create Core Tables
-CREATE TABLE public.companies (
-  id uuid DEFAULT gen_random_uuid() PRIMARY KEY, 
-  name text NOT NULL, 
-  gstin text, 
-  address text, 
-  is_deleted boolean DEFAULT false, 
-  created_at timestamptz DEFAULT now(), 
-  user_id uuid DEFAULT auth.uid(),
-  created_by uuid DEFAULT auth.uid()
-);
-
--- 2.1 Create OTP Verification Table
-CREATE TABLE public.login_verifications (
-  id uuid DEFAULT gen_random_uuid() PRIMARY KEY,
-  user_id uuid REFERENCES auth.users(id) ON DELETE CASCADE,
-  otp text NOT NULL,
-  expires_at timestamptz NOT NULL,
-  created_at timestamptz DEFAULT now()
-);
-
--- 2.2 Create Users Table
-CREATE TABLE public.users (
-  id uuid PRIMARY KEY,
-  email text NOT NULL,
-  created_at timestamptz DEFAULT now()
-);
-
--- 2.3 Create Vendors and Customers Tables
-CREATE TABLE public.vendors (id uuid DEFAULT gen_random_uuid() PRIMARY KEY, company_id uuid REFERENCES public.companies(id) ON DELETE CASCADE, name text NOT NULL, email text, phone text, gstin text, pan text, state text, account_number text, account_name text, ifsc_code text, address text, balance numeric DEFAULT 0, party_type text DEFAULT 'vendor', is_customer boolean DEFAULT false, is_deleted boolean DEFAULT false, created_at timestamptz DEFAULT now());
-CREATE TABLE public.customers (id uuid DEFAULT gen_random_uuid() PRIMARY KEY, company_id uuid REFERENCES public.companies(id) ON DELETE CASCADE, name text NOT NULL, email text, phone text, gstin text, pan text, state text, account_number text, account_name text, ifsc_code text, address text, balance numeric DEFAULT 0, party_type text DEFAULT 'customer', is_customer boolean DEFAULT true, is_deleted boolean DEFAULT false, created_at timestamptz DEFAULT now());
-
--- 2.4 Create Bills and Invoices Tables
-CREATE TABLE public.purchase_bills (id uuid DEFAULT gen_random_uuid() PRIMARY KEY, company_id uuid REFERENCES public.companies(id) ON DELETE CASCADE, vendor_name text NOT NULL, bill_number text NOT NULL, date date NOT NULL DEFAULT CURRENT_DATE, total_without_gst numeric DEFAULT 0, total_gst numeric DEFAULT 0, grand_total numeric DEFAULT 0, status text DEFAULT 'Pending', is_deleted boolean DEFAULT false, description text, items jsonb DEFAULT '{}'::jsonb, round_off numeric DEFAULT 0, created_at timestamptz DEFAULT now());
-CREATE TABLE public.sales_invoices (id uuid DEFAULT gen_random_uuid() PRIMARY KEY, company_id uuid REFERENCES public.companies(id) ON DELETE CASCADE, customer_name text NOT NULL, invoice_number text NOT NULL, date date NOT NULL DEFAULT CURRENT_DATE, total_without_gst numeric DEFAULT 0, total_gst numeric DEFAULT 0, grand_total numeric DEFAULT 0, status text DEFAULT 'Pending', is_deleted boolean DEFAULT false, description text, items jsonb DEFAULT '{}'::jsonb, round_off numeric DEFAULT 0, created_at timestamptz DEFAULT now());
-
--- 2.5 Create Stock, Duties and Taxes, and Cashbook Tables
-CREATE TABLE public.stock_items (id uuid DEFAULT gen_random_uuid() PRIMARY KEY, company_id uuid REFERENCES public.companies(id) ON DELETE CASCADE, name text NOT NULL, hsn text, rate numeric DEFAULT 0, selling_price numeric DEFAULT 0, tax_rate numeric DEFAULT 0, unit text DEFAULT 'PCS', in_stock numeric DEFAULT 0, sku text, description text, kg_per_bag numeric DEFAULT 0, is_deleted boolean DEFAULT false, created_at timestamptz DEFAULT now());
-CREATE TABLE public.duties_taxes (id uuid DEFAULT gen_random_uuid() PRIMARY KEY, company_id uuid REFERENCES public.companies(id) ON DELETE CASCADE, name text NOT NULL, type text DEFAULT 'Charge', calc_method text DEFAULT 'Percentage', rate numeric DEFAULT 0, fixed_amount numeric DEFAULT 0, apply_on text DEFAULT 'Subtotal', applicable_to text DEFAULT 'Both', is_default boolean DEFAULT false, is_deleted boolean DEFAULT false, created_at timestamptz DEFAULT now());
-CREATE TABLE public.cashbooks (id uuid DEFAULT gen_random_uuid() PRIMARY KEY, company_id uuid REFERENCES public.companies(id) ON DELETE CASCADE, date date NOT NULL, income_total numeric DEFAULT 0, expense_total numeric DEFAULT 0, balance numeric DEFAULT 0, raw_data jsonb DEFAULT '{}'::jsonb, is_deleted boolean DEFAULT false, created_at timestamptz DEFAULT now());
-
--- 3. Enable RLS
-ALTER TABLE public.profiles ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.companies ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.users ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.vendors ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.customers ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.purchase_bills ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.sales_invoices ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.stock_items ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.duties_taxes ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.cashbooks ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.login_verifications ENABLE ROW LEVEL SECURITY;
-
--- 4. Set Policies
-CREATE POLICY "Users can manage own profile" ON public.profiles FOR ALL TO authenticated USING (auth.uid() = id);
-CREATE POLICY "Manage own companies" ON public.companies FOR ALL TO authenticated USING (auth.uid() = created_by);
-CREATE POLICY "Manage own users" ON public.users FOR ALL TO authenticated USING (auth.uid() = id);
-CREATE POLICY "Manage company vendors" ON public.vendors FOR ALL TO authenticated USING (company_id IN (SELECT id FROM companies WHERE created_by = auth.uid()));
-CREATE POLICY "Manage company customers" ON public.customers FOR ALL TO authenticated USING (company_id IN (SELECT id FROM companies WHERE created_by = auth.uid()));
-CREATE POLICY "Manage company purchase bills" ON public.purchase_bills FOR ALL TO authenticated USING (company_id IN (SELECT id FROM companies WHERE created_by = auth.uid()));
-CREATE POLICY "Manage company sales" ON public.sales_invoices FOR ALL TO authenticated USING (company_id IN (SELECT id FROM companies WHERE created_by = auth.uid()));
-CREATE POLICY "Manage company stock" ON public.stock_items FOR ALL TO authenticated USING (company_id IN (SELECT id FROM companies WHERE created_by = auth.uid()));
-CREATE POLICY "Manage company taxes" ON public.duties_taxes FOR ALL TO authenticated USING (company_id IN (SELECT id FROM companies WHERE created_by = auth.uid()));
-CREATE POLICY "Manage company cashbook" ON public.cashbooks FOR ALL TO authenticated USING (company_id IN (SELECT id FROM companies WHERE created_by = auth.uid()));
-CREATE POLICY "Manage own OTPs" ON public.login_verifications FOR ALL TO authenticated USING (auth.uid() = user_id);
-
--- 5. Auto-create user profiles & records on signup
-CREATE OR REPLACE FUNCTION public.handle_new_user()
-RETURNS trigger AS $$
-BEGIN
-  INSERT INTO public.users (id, email, created_at)
-  VALUES (new.id, new.email, now())
-  ON CONFLICT (id) DO NOTHING;
-  
-  INSERT INTO public.profiles (id, created_at)
-  VALUES (new.id, now())
-  ON CONFLICT (id) DO NOTHING;
-  
-  RETURN NEW;
-END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
-
-CREATE OR REPLACE TRIGGER on_auth_user_created
-  AFTER INSERT ON auth.users
-  FOR EACH ROW EXECUTE FUNCTION public.handle_new_user();`;
-                      await navigator.clipboard.writeText(sql);
-                      setCopied(true);
-                      setTimeout(() => setCopied(false), 2000);
-                    }}
-                    className="flex items-center space-x-1 px-2.5 py-1 bg-white/10 hover:bg-white/20 text-white rounded text-[10px] font-bold"
-                  >
-                    {copied ? <Check className="w-3 h-3 text-emerald-400 mr-1" /> : <Copy className="w-3 h-3 mr-1" />}
-                    {copied ? "COPIED!" : "COPY COMPLETE SQL"}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setShowSqlHelp(false)}
-                    className="px-2 py-1 text-[10px] text-slate-400 hover:text-white uppercase font-bold"
-                  >
-                    Hide
-                  </button>
+        {/* STEP 2: VERIFIED LICENSE KEY CONFIRMATION */}
+        {step === 'license' && (
+          <div className="space-y-5 animate-in fade-in duration-200">
+            
+            {/* Matched Account Banner if found via email */}
+            {matchedUser ? (
+              <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-3.5 space-y-1.5">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center space-x-2 text-emerald-800 font-bold text-xs">
+                    <ShieldCheck className="w-4 h-4 text-emerald-600 shrink-0" />
+                    <span>Registered Account Found</span>
+                  </div>
+                  <span className="px-2 py-0.5 bg-emerald-200 text-emerald-800 text-[10px] font-bold rounded uppercase tracking-wider">
+                    {matchedLicense?.edition || 'Enterprise'}
+                  </span>
+                </div>
+                <p className="text-xs text-emerald-700 font-medium">
+                  {matchedUser.email}
+                </p>
+                <div className="flex items-center space-x-1 text-[11px] text-emerald-600 pt-0.5">
+                  <Sparkles className="w-3 h-3" />
+                  <span>License key loaded automatically from your account.</span>
                 </div>
               </div>
-              <p className="text-[11px] text-slate-400 leading-relaxed">
-                Run this SQL query in your <strong>Supabase Dashboard &gt; SQL Editor &gt; New Query</strong> to set up all tables, enable RLS, configure access control policies, and link auth signup automation.
-              </p>
-              <pre className="p-2.5 bg-black/50 text-emerald-400 font-mono text-[9px] rounded-lg max-h-[180px] overflow-y-auto select-all leading-normal whitespace-pre-wrap">
-{`-- Run this SQL in Supabase SQL Editor to initialize and fix user signup:
+            ) : (
+              <div className="bg-slate-50 border border-slate-200/80 rounded-lg p-4 space-y-2">
+                <div className="flex items-center space-x-2 text-slate-700">
+                  <KeyRound className="w-4 h-4 text-primary shrink-0" />
+                  <span className="text-xs font-bold uppercase tracking-wider">Product License Authorization</span>
+                </div>
+                <p className="text-xs text-slate-500 leading-relaxed">
+                  Enter your product license key to unlock your offline workspaces, ledgers, and transactions.
+                </p>
+              </div>
+            )}
 
-DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users CASCADE;
-DROP TRIGGER IF EXISTS on_user_created ON auth.users CASCADE;
-DROP TRIGGER IF EXISTS sync_user ON auth.users CASCADE;
-DROP FUNCTION IF EXISTS public.handle_new_user() CASCADE;
-DROP FUNCTION IF EXISTS public.sync_user() CASCADE;
+            {/* License Form */}
+            <form onSubmit={handleActivateLicense} className="space-y-4">
+              <div className="space-y-1.5">
+                <div className="flex items-center justify-between">
+                  <label htmlFor="license-input-field" className="block text-xs font-bold uppercase tracking-wider text-slate-600">
+                    License Key
+                  </label>
+                  {matchedUser && (
+                    <span className="text-[11px] font-medium text-emerald-600 flex items-center space-x-1">
+                      <CheckCircle2 className="w-3 h-3" />
+                      <span>Auto-Matched</span>
+                    </span>
+                  )}
+                </div>
+                <div className="relative">
+                  <input
+                    id="license-input-field"
+                    type="text"
+                    value={licenseInput}
+                    onChange={(e) => {
+                      setLicenseInput(e.target.value.toUpperCase());
+                      if (licenseError) setLicenseError(null);
+                    }}
+                    placeholder="LC-XXXX-XXXX-XXXX"
+                    className={`w-full px-3.5 py-2.5 bg-white border ${
+                      matchedUser ? 'border-emerald-300 bg-emerald-50/20' : 'border-slate-300'
+                    } focus:border-primary focus:ring-1 focus:ring-primary rounded-lg text-sm font-mono tracking-wider uppercase text-slate-900 outline-none transition-all placeholder:text-slate-400`}
+                    autoFocus={!matchedUser}
+                    disabled={licenseLoading}
+                  />
+                </div>
+              </div>
 
-CREATE TABLE public.profiles (
-  id uuid REFERENCES auth.users ON DELETE CASCADE PRIMARY KEY,
-  active_company_id uuid,
-  full_name text,
-  created_at timestamptz DEFAULT now()
-);
+              {licenseError && (
+                <div className="p-3 bg-red-50 border border-red-200 text-red-700 text-xs rounded-lg flex items-start space-x-2">
+                  <AlertCircle className="w-4 h-4 text-red-500 shrink-0 mt-0.5" />
+                  <span>{licenseError}</span>
+                </div>
+              )}
 
-CREATE TABLE public.users (
-  id uuid PRIMARY KEY,
-  email text NOT NULL,
-  created_at timestamptz DEFAULT now()
-);
+              {successMsg && (
+                <div className="p-3 bg-emerald-50 border border-emerald-200 text-emerald-700 text-xs rounded-lg flex items-start space-x-2">
+                  <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
+                  <span>{successMsg}</span>
+                </div>
+              )}
 
--- (Click "Copy SQL" above for the complete schema, RLS policies, and triggers)`}
-              </pre>
+              <button
+                id="unlock-workspace-btn"
+                type="submit"
+                disabled={licenseLoading || !licenseInput.trim()}
+                className="w-full py-2.5 px-4 bg-primary hover:bg-primary-dark text-white text-sm font-bold rounded-lg transition-all flex items-center justify-center space-x-2 shadow-xs cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {licenseLoading ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    <span>Verifying License...</span>
+                  </>
+                ) : (
+                  <>
+                    <span>Unlock & Enter Workspaces</span>
+                    <ArrowRight className="w-4 h-4" />
+                  </>
+                )}
+              </button>
+            </form>
+
+            {/* Back to email lookup */}
+            <div className="pt-1 text-center">
+              <button
+                type="button"
+                onClick={() => {
+                  setStep('email');
+                  setLicenseError(null);
+                }}
+                className="text-xs text-slate-500 hover:text-slate-800 font-medium inline-flex items-center space-x-1 cursor-pointer transition-colors"
+              >
+                <ArrowLeft className="w-3.5 h-3.5" />
+                <span>Change Email / Back to Lookup</span>
+              </button>
             </div>
-          )}
+          </div>
+        )}
+
+        {/* Offline Badge Footer */}
+        <div className="bg-slate-50 rounded-lg p-3 border border-slate-200/60 flex items-center justify-between text-[11px] text-slate-500">
+          <div className="flex items-center space-x-2">
+            <HardDrive className="w-3.5 h-3.5 text-slate-500" />
+            <span className="font-medium">100% Offline Mode (IndexedDB)</span>
+          </div>
+          <span className="px-2 py-0.5 bg-emerald-100 text-emerald-700 font-bold rounded text-[10px] uppercase tracking-wider">
+            Ready
+          </span>
         </div>
+
       </div>
     </div>
   );
 };
 
 export default Auth;
-

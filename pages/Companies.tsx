@@ -1,13 +1,14 @@
 
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Building2, Plus, Search, Loader2, LogOut, ArrowRight, Edit, Trash2, Save } from 'lucide-react';
+import { Building2, Plus, Search, Loader2, LogOut, ArrowRight, Edit, Trash2, Save, KeyRound, HardDrive } from 'lucide-react';
 import Modal from '../components/Modal';
 import Logo from '../components/Logo';
 import ConfirmDialog from '../components/ConfirmDialog';
 import EmptyState from '../components/EmptyState';
 import { supabase, getAuthUser } from '../lib/supabase';
 import { useCompany } from '../context/CompanyContext';
+import { getActiveLicense, DEFAULT_LICENSE_KEY, removeActiveLicense } from '../lib/licenseManager';
 
 const Companies = () => {
   const [companies, setCompanies] = useState<any[]>([]);
@@ -21,6 +22,7 @@ const Companies = () => {
     isOpen: false,
     company: null
   });
+  const [activeLicense, setActiveLicenseState] = useState<any>(null);
   
   const navigate = useNavigate();
   const { activeCompany, setCompany } = useCompany();
@@ -28,20 +30,18 @@ const Companies = () => {
   const loadData = async () => {
     setLoading(true);
     try {
+      const activeLic = getActiveLicense();
+      setActiveLicenseState(activeLic);
       const user = await getAuthUser();
-      const isRealUser = user && user.id !== 'local-user-1';
+      const currentUserId = user?.id || activeLic?.user_id;
 
-      let query = supabase.from('companies').select('*').eq('is_deleted', false);
-      if (isRealUser) {
-        query = query.or(`created_by.eq.${user.id},user_id.eq.${user.id}`);
-      }
-
-      const { data, error } = await query.order('name');
+      const { data, error } = await supabase.from('companies').select('*').eq('is_deleted', false).order('name');
       if (error) throw error;
 
+      // Only show workspaces created with the account user_id which is connected to user's entered email
       const filtered = (data || []).filter((c: any) => {
-        if (isRealUser && c.id === 'local-company-1') return false;
-        return true;
+        if (!currentUserId) return false;
+        return c.user_id === currentUserId || c.created_by === currentUserId;
       });
 
       setCompanies(filtered);
@@ -53,6 +53,12 @@ const Companies = () => {
   };
 
   useEffect(() => { loadData(); }, []);
+
+  const handleSignOut = async () => {
+    removeActiveLicense();
+    await supabase.auth.signOut();
+    navigate('/auth', { replace: true });
+  };
 
   const handleOpenCreate = () => {
     setEditingCompany(null);
@@ -81,10 +87,14 @@ const Companies = () => {
       const user = await getAuthUser();
       if (!user) throw new Error("Auth Session Not Found");
 
+      const activeLic = getActiveLicense();
+      const licKey = activeLic?.license_key || DEFAULT_LICENSE_KEY;
+
       const payload = {
         name: formData.name.trim().toUpperCase(),
         gstin: formData.gstin.trim().toUpperCase(),
         address: formData.address.trim(),
+        license_key: licKey,
         user_id: user.id,
         created_by: user.id
       };
@@ -152,7 +162,7 @@ const Companies = () => {
               <span className="text-[10px] font-medium text-slate-400 capitalize tracking-widest mr-2">Workspaces</span>
             </div>
           </div>
-          <button onClick={() => supabase.auth.signOut()} className="sm:hidden p-2 text-slate-400 hover:text-red-500 rounded transition-colors">
+          <button onClick={handleSignOut} className="sm:hidden p-2 text-slate-400 hover:text-red-500 rounded transition-colors" title="Lock & Return to License Screen">
             <LogOut className="w-4 h-4" />
           </button>
         </div>
@@ -163,13 +173,29 @@ const Companies = () => {
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Filter your accounts..."
-              className="w-full pl-10 pr-4 py-2 border border-slate-200 rounded text-xs outline-none focus:border-slate-400"
+              placeholder="Filter your workspaces..."
+              className="w-full pl-10 pr-4 py-2 border border-slate-200 rounded text-xs outline-none focus:border-slate-400 bg-white"
             />
           </div>
         </div>
-        <div className="hidden sm:flex items-center space-x-4">
-           <button onClick={() => supabase.auth.signOut()} className="p-2 text-slate-400 hover:text-red-500 rounded transition-colors">
+        <div className="hidden sm:flex items-center space-x-3">
+          <div 
+            onClick={() => navigate('/auth')}
+            title="Active License - Click to change"
+            className="flex items-center space-x-1.5 px-3 py-1.5 bg-slate-100 border border-slate-200 text-slate-700 font-mono text-xs rounded-lg cursor-pointer hover:bg-slate-200 transition-colors"
+          >
+            <KeyRound className="w-3.5 h-3.5 text-primary shrink-0" />
+            <span className="font-semibold">{activeLicense?.license_key || 'Active License'}</span>
+          </div>
+          <span className="flex items-center space-x-1 px-2.5 py-1 bg-emerald-50 border border-emerald-200 text-emerald-700 font-medium rounded text-[11px]">
+            <HardDrive className="w-3 h-3 text-emerald-600" />
+            <span>Offline</span>
+          </span>
+          <button 
+            onClick={handleSignOut} 
+            className="p-2 text-slate-400 hover:text-red-500 hover:bg-slate-50 rounded transition-colors"
+            title="Lock & Return to License Screen"
+          >
             <LogOut className="w-4 h-4" />
           </button>
         </div>

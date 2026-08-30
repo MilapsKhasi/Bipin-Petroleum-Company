@@ -1,9 +1,11 @@
 // IndexedDB Engine for Purchase Master App Offline Resilience
 
 const DB_NAME = 'PurchaseMasterIDB';
-const DB_VERSION = 2;
+const DB_VERSION = 7;
 
 export const IDB_STORES = [
+  'licenses',
+  'login_verifications',
   'users',
   'profiles',
   'companies',
@@ -12,11 +14,17 @@ export const IDB_STORES = [
   'customers',
   'vendors',
   'stock_items',
+  'stock_groups',
   'cashbook',
   'cashbooks',
+  'additional_charges',
   'duties_taxes',
   'delivery_challans',
   'payment_vouchers',
+  'payments_in',
+  'payments_out',
+  'user_activities',
+  'queue',
   'sync_queue',
   'meta'
 ] as const;

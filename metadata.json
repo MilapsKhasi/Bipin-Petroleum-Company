@@ -1,5 +1,8 @@
 {
   "name": "Bipin Petroleum Co.",
-  "description": "Powered by ZenterPrime",
-  "requestFramePermissions": []
+  "description": "Offline-first desktop and web management system for Bipin Petroleum Co. with license key validation, IndexedDB local persistence, and Electron desktop executable support.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
 }

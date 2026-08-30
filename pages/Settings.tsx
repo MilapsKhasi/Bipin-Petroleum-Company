@@ -1,18 +1,54 @@
-
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Save, Loader2, Trash2, AlertTriangle, Building2, MapPin, Fingerprint, Moon, Sun, Monitor, Percent, CheckCircle2, RotateCcw, Trash, Filter, ShieldCheck, BadgeCheck, HardDrive, Download, Cpu, FolderSymlink, Laptop } from 'lucide-react';
+import { 
+  Save, 
+  Loader2, 
+  Trash2, 
+  Building2, 
+  MapPin, 
+  Fingerprint, 
+  Moon, 
+  Sun, 
+  Percent, 
+  CheckCircle2, 
+  RotateCcw, 
+  ShieldCheck, 
+  BadgeCheck, 
+  Download, 
+  FileSpreadsheet, 
+  FileCode, 
+  Clock, 
+  Upload, 
+  Check, 
+  Layers, 
+  Database, 
+  Calendar, 
+  Zap, 
+  FileText,
+  AlertCircle
+} from 'lucide-react';
 import { getActiveCompanyId, safeSupabaseSave, getAppSettings, formatDate } from '../utils/helpers';
 import { supabase } from '../lib/supabase';
-import { processOfflineSyncQueue } from '../lib/syncEngine';
+import { 
+  getBackupConfig, 
+  saveBackupConfig, 
+  getBackupHistory, 
+  executeManualBackup, 
+  restoreDatabaseFromJson, 
+  getPopulatedWorkspaceData, 
+  subscribeBackupEvents, 
+  BackupConfig, 
+  BackupFrequency, 
+  BackupFormat, 
+  MODULE_DISPLAY_NAMES,
+  WorkspaceBackupData 
+} from '../lib/backupEngine';
 import ConfirmDialog from '../components/ConfirmDialog';
-import { exportFullDatabaseToFolder, downloadStandaloneOfflineLauncher, downloadWindowsExePackage } from '../utils/offlineHelper';
 
 const Settings = () => {
   const navigate = useNavigate();
   const cid = getActiveCompanyId();
 
-  // Lazy initialize states from localStorage to prevent resets on reload
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [workspaceInfo, setWorkspaceInfo] = useState({ name: '', gstin: '', address: '' });
@@ -26,54 +62,34 @@ const Settings = () => {
   const [isDeleteConfirmOpen, setIsDeleteConfirmOpen] = useState(false);
   const [licenseId, setLicenseId] = useState('26401');
   
-  // Offline & Desktop State
-  const [offlineActionLoading, setOfflineActionLoading] = useState(false);
-  const [offlineStatusMsg, setOfflineStatusMsg] = useState('');
+  // Backup Engine State
+  const [backupConfig, setBackupConfig] = useState<BackupConfig>(getBackupConfig());
+  const [backupHistory, setBackupHistory] = useState(getBackupHistory());
+  const [workspaceData, setWorkspaceData] = useState<WorkspaceBackupData | null>(null);
+  const [isExporting, setIsExporting] = useState<string | null>(null);
+  const [backupActionMsg, setBackupActionMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [isRestoring, setIsRestoring] = useState(false);
 
   // Recycle Bin State
   const [recycleTab, setRecycleTab] = useState('All');
   const [deletedItems, setDeletedItems] = useState<any[]>([]);
   const [recycleLoading, setRecycleLoading] = useState(false);
 
-  const handleExportDiskFolder = async () => {
-    setOfflineActionLoading(true);
-    setOfflineStatusMsg('Syncing all database records to disk folder...');
-    try {
-      const res = await exportFullDatabaseToFolder();
-      if (res?.success) {
-        setOfflineStatusMsg(`✅ Data saved successfully to local disk folder (${res.folder || res.filename}).`);
-      } else if (res?.aborted) {
-        setOfflineStatusMsg('Sync canceled by user.');
-      }
-    } catch (err: any) {
-      setOfflineStatusMsg(`❌ Error: ${err.message}`);
-    } finally {
-      setOfflineActionLoading(false);
-    }
-  };
-
-  const handleDownloadOfflineHtml = async () => {
-    setOfflineActionLoading(true);
-    setOfflineStatusMsg('Generating standalone offline HTML application snapshot...');
-    try {
-      await downloadStandaloneOfflineLauncher();
-      setOfflineStatusMsg('✅ Standalone offline app downloaded to your hard disk.');
-    } catch (err: any) {
-      setOfflineStatusMsg(`❌ Error: ${err.message}`);
-    } finally {
-      setOfflineActionLoading(false);
-    }
-  };
-
-  const handleDownloadExeBuilder = () => {
-    downloadWindowsExePackage();
-    setOfflineStatusMsg('✅ Desktop .EXE compiler package downloaded. Double-click the file on Windows to launch standalone application.');
-  };
-
   const recycleTabs = [
     'All', 'Workspace', 'Sales Invoices', 'Purchase Bills', 
     'Customers', 'Vendors', 'Stock Master', 'Cashbook', 'Additional Charges'
   ];
+
+  const refreshBackupData = async () => {
+    try {
+      setBackupConfig(getBackupConfig());
+      setBackupHistory(getBackupHistory());
+      const data = await getPopulatedWorkspaceData(cid || undefined);
+      setWorkspaceData(data);
+    } catch (err) {
+      console.warn('[Settings] Failed to refresh backup data:', err);
+    }
+  };
 
   const loadProfile = async () => {
     if (!cid) {
@@ -88,14 +104,12 @@ const Settings = () => {
         setWorkspaceInfo({ name: data.name || '', gstin: data.gstin || '', address: data.address || '' });
       }
 
-      // Re-sync local settings from storage just in case
       const settings = getAppSettings();
       setGstConfig({
-          enabled: settings.gstEnabled,
-          type: settings.gstType || 'CGST - SGST'
+        enabled: settings.gstEnabled,
+        type: settings.gstType || 'CGST - SGST'
       });
       
-      // Calculate License ID based on creation order
       const { data: allCompanies } = await supabase
         .from('companies')
         .select('id, created_at')
@@ -109,6 +123,7 @@ const Settings = () => {
         }
       }
 
+      await refreshBackupData();
       await fetchRecycleData();
     } catch (err) {
       console.error("Settings load error:", err);
@@ -159,13 +174,98 @@ const Settings = () => {
     }
   };
 
-  useEffect(() => { loadProfile(); }, [cid]);
+  useEffect(() => { 
+    loadProfile(); 
+    const unsub = subscribeBackupEvents(() => {
+      refreshBackupData();
+    });
+    return () => unsub();
+  }, [cid]);
+
+  const handleUpdateFrequency = (freq: BackupFrequency) => {
+    const updated = saveBackupConfig({ frequency: freq });
+    setBackupConfig(updated);
+    setBackupActionMsg({
+      type: 'success',
+      text: `Auto-backup frequency updated to: ${getFrequencyDisplay(freq)}`
+    });
+  };
+
+  const handleUpdateFormat = (format: BackupFormat) => {
+    const updated = saveBackupConfig({ format });
+    setBackupConfig(updated);
+    setBackupActionMsg({
+      type: 'success',
+      text: `Default backup format updated to: ${format.toUpperCase()}`
+    });
+  };
+
+  const handleToggleAutoDownload = () => {
+    const nextVal = !backupConfig.autoDownload;
+    const updated = saveBackupConfig({ autoDownload: nextVal });
+    setBackupConfig(updated);
+    setBackupActionMsg({
+      type: 'success',
+      text: nextVal ? 'Automatic browser download enabled for scheduled backups.' : 'Silent background backup enabled (no popup download).'
+    });
+  };
+
+  const handleManualBackup = async (format: BackupFormat) => {
+    setIsExporting(format);
+    setBackupActionMsg(null);
+    try {
+      const res = await executeManualBackup(format, { autoDownload: true });
+      setBackupActionMsg({
+        type: 'success',
+        text: `Exported ${res.totalRecords} records across ${res.totalModules} active modules to ${res.filename}!`
+      });
+      await refreshBackupData();
+    } catch (err: any) {
+      setBackupActionMsg({
+        type: 'error',
+        text: `Backup failed: ${err.message || 'Error creating file'}`
+      });
+    } finally {
+      setIsExporting(null);
+    }
+  };
+
+  const handleRestoreFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (!confirm(`Are you sure you want to restore data from "${file.name}"? This will import records into your local database.`)) {
+      e.target.value = '';
+      return;
+    }
+
+    setIsRestoring(true);
+    setBackupActionMsg(null);
+    try {
+      const res = await restoreDatabaseFromJson(file);
+      setBackupActionMsg({
+        type: 'success',
+        text: res.message
+      });
+      await refreshBackupData();
+      await fetchRecycleData();
+    } catch (err: any) {
+      setBackupActionMsg({
+        type: 'error',
+        text: `Restore failed: ${err.message || 'Invalid backup file'}`
+      });
+    } finally {
+      setIsRestoring(false);
+      e.target.value = '';
+    }
+  };
 
   const handleRecover = async (item: any) => {
     try {
       const { error } = await supabase.from(item.table).update({ is_deleted: false }).eq('id', item.id);
       if (error) throw error;
       await fetchRecycleData();
+      await refreshBackupData();
       window.dispatchEvent(new Event('appSettingsChanged'));
     } catch (err: any) {
       alert("Recovery failed: " + err.message);
@@ -178,6 +278,7 @@ const Settings = () => {
       const { error } = await supabase.from(item.table).delete().eq('id', item.id);
       if (error) throw error;
       await fetchRecycleData();
+      await refreshBackupData();
     } catch (err: any) {
       alert("Delete failed: " + err.message);
     }
@@ -194,26 +295,21 @@ const Settings = () => {
     window.dispatchEvent(new Event('appSettingsChanged'));
   };
 
-  /**
-   * FIX: Toggle function now saves state IMMEDIATELY to localStorage
-   * to prevent it from resetting on reload.
-   */
   const toggleGST = (e?: React.MouseEvent) => {
     if (e) e.preventDefault();
     const newEnabled = !gstConfig.enabled;
     const newConfig = { ...gstConfig, enabled: newEnabled };
     setGstConfig(newConfig);
     
-    // Immediate Persistence
     if (cid) {
-        const currentSettings = getAppSettings();
-        const updatedSettings = { 
-          ...currentSettings, 
-          gstEnabled: newEnabled, 
-          gstType: newConfig.type 
-        };
-        localStorage.setItem(`appSettings_${cid}`, JSON.stringify(updatedSettings));
-        window.dispatchEvent(new Event('appSettingsChanged'));
+      const currentSettings = getAppSettings();
+      const updatedSettings = { 
+        ...currentSettings, 
+        gstEnabled: newEnabled, 
+        gstType: newConfig.type 
+      };
+      localStorage.setItem(`appSettings_${cid}`, JSON.stringify(updatedSettings));
+      window.dispatchEvent(new Event('appSettingsChanged'));
     }
   };
 
@@ -222,11 +318,9 @@ const Settings = () => {
     if (!cid) return;
     setSaving(true);
     try {
-      // Save Workspace Info to Supabase
       await safeSupabaseSave('companies', workspaceInfo, cid);
       localStorage.setItem('activeCompanyName', workspaceInfo.name);
 
-      // Save GST Type to localStorage
       const currentSettings = getAppSettings();
       const updatedSettings = { 
         ...currentSettings, 
@@ -235,16 +329,15 @@ const Settings = () => {
       };
       localStorage.setItem(`appSettings_${cid}`, JSON.stringify(updatedSettings));
 
-      // Auto-create tax ledgers if needed
       if (gstConfig.enabled) {
         const ledgersToEnsure = gstConfig.type === 'CGST - SGST' ? ['CGST', 'SGST'] : ['IGST'];
         for (const name of ledgersToEnsure) {
-            const { data: existing } = await supabase.from('duties_taxes').select('id').eq('company_id', cid).eq('name', name).eq('is_deleted', false).maybeSingle();
-            if (!existing) {
-                await safeSupabaseSave('duties_taxes', {
-                    name, type: 'Charge', calc_method: 'Fixed', fixed_amount: 0, rate: 0, apply_on: 'Subtotal', is_default: true, is_deleted: false
-                });
-            }
+          const { data: existing } = await supabase.from('duties_taxes').select('id').eq('company_id', cid).eq('name', name).eq('is_deleted', false).maybeSingle();
+          if (!existing) {
+            await safeSupabaseSave('duties_taxes', {
+              name, type: 'Charge', calc_method: 'Fixed', fixed_amount: 0, rate: 0, apply_on: 'Subtotal', is_default: true, is_deleted: false
+            });
+          }
         }
       }
 
@@ -270,6 +363,27 @@ const Settings = () => {
     }
   };
 
+  const getFrequencyDisplay = (freq: BackupFrequency) => {
+    switch (freq) {
+      case 'every_transaction': return 'After Every Transaction';
+      case 'daily': return 'Once a Day (Daily)';
+      case 'weekly': return 'Once a Week (Weekly)';
+      case 'monthly': return 'Once a Month (Monthly)';
+      case 'manual_only': return 'Manual Only (Disabled)';
+      default: return freq;
+    }
+  };
+
+  const formatLastBackupTime = (ts: number | null | undefined) => {
+    if (!ts) return 'Never';
+    try {
+      const d = new Date(ts);
+      return `${formatDate(d.toISOString())} ${d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
+    } catch {
+      return 'Never';
+    }
+  };
+
   const filteredDeleted = deletedItems.filter(item => recycleTab === 'All' || item.origin === recycleTab);
 
   if (loading) return <div className="py-40 text-center"><Loader2 className="w-8 h-8 animate-spin inline text-primary" /></div>;
@@ -277,8 +391,8 @@ const Settings = () => {
   return (
     <div className="space-y-8 animate-in fade-in duration-300 max-w-5xl">
       <div className="flex flex-col text-left">
-        <h1 className="text-[20px] font-medium text-slate-900 dark:text-slate-100 capitalize">Workspace Settings</h1>
-        <p className="text-slate-500 dark:text-slate-400 text-xs mt-1">Configure your business profile, theme preferences, and workspace lifecycle.</p>
+        <h1 className="text-[20px] font-medium text-slate-900 dark:text-slate-100 capitalize">Workspace & Backup Settings</h1>
+        <p className="text-slate-500 dark:text-slate-400 text-xs mt-1">Configure your business profile, theme preferences, and local automated/manual backup policies.</p>
       </div>
 
       <form onSubmit={handleUpdate} className="space-y-6">
@@ -294,82 +408,334 @@ const Settings = () => {
                   <ShieldCheck className="w-6 h-6 text-primary-dark" />
                 </div>
                 <div>
-                  <h4 className="text-sm font-bold text-slate-900 dark:text-slate-100">Plan - <span className="text-link">Active</span></h4>
+                  <h4 className="text-sm font-bold text-slate-900 dark:text-slate-100">Plan - <span className="text-link">Active Local License</span></h4>
                   <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1 uppercase tracking-wider font-mono">License ID: {licenseId}</p>
                 </div>
               </div>
               <div className="flex justify-end">
                 <div className="bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-100 dark:border-emerald-800 px-4 py-2 rounded-lg flex items-center">
                   <BadgeCheck className="w-4 h-4 text-emerald-600 dark:text-emerald-400 mr-2" />
-                  <span className="text-[11px] font-bold text-emerald-700 dark:text-emerald-300 uppercase tracking-tighter">Version ZP-26.07.01</span>
+                  <span className="text-[11px] font-bold text-emerald-700 dark:text-emerald-300 uppercase tracking-tighter">Version ZP-26.07.01 (Offline Engine)</span>
                 </div>
               </div>
             </div>
           </div>
         </div>
 
-        {/* Appearance Section */}
-        <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-md overflow-hidden shadow-sm">
-          <div className="p-6 border-b border-slate-100 dark:border-slate-800 bg-slate-50/30 dark:bg-slate-900/50">
-            <h3 className="text-xs font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest">Appearance</h3>
+        {/* Data Backup & Auto-Backup System Section */}
+        <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-md overflow-hidden shadow-sm text-left">
+          <div className="p-6 border-b border-slate-100 dark:border-slate-800 bg-slate-50/30 dark:bg-slate-900/50 flex items-center justify-between">
+            <div className="flex items-center space-x-2">
+              <Database className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+              <h3 className="text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-widest">
+                Data Backup & Automated Schedule
+              </h3>
+            </div>
+            <span className="text-[11px] font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-900/20 px-2.5 py-1 rounded flex items-center border border-emerald-200/60 dark:border-emerald-800/60">
+              <CheckCircle2 className="w-3.5 h-3.5 mr-1" />
+              {backupConfig.frequency === 'manual_only' ? 'Manual Backup Mode' : `Auto-Backup: ${getFrequencyDisplay(backupConfig.frequency)}`}
+            </span>
           </div>
-          <div className="p-8">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-8 items-center">
-              <div>
-                <h4 className="text-sm font-bold text-slate-900 dark:text-slate-100 mb-1">Visual Theme</h4>
-                <p className="text-xs text-slate-500 dark:text-slate-400">Choose between light, dark, or system-default appearance.</p>
+
+          <div className="p-6 sm:p-8 space-y-6">
+            <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
+              All application data is securely stored locally on your device. Choose when you want the system to create backups automatically, or download instant Excel and JSON exports at any time. <strong className="text-slate-700 dark:text-slate-300 font-semibold">Empty modules with 0 records are automatically skipped</strong> to keep your backups lightweight and focused.
+            </p>
+
+            {/* Notification alert */}
+            {backupActionMsg && (
+              <div className={`p-3.5 rounded-lg text-xs font-medium border flex items-center justify-between animate-in fade-in duration-200 ${
+                backupActionMsg.type === 'success' 
+                  ? 'bg-emerald-50 dark:bg-emerald-900/30 border-emerald-200 dark:border-emerald-800 text-emerald-800 dark:text-emerald-200'
+                  : 'bg-rose-50 dark:bg-rose-900/30 border-rose-200 dark:border-rose-800 text-rose-800 dark:text-rose-200'
+              }`}>
+                <span className="flex items-center gap-2">
+                  {backupActionMsg.type === 'success' ? <Check className="w-4 h-4 text-emerald-600 shrink-0" /> : <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />}
+                  {backupActionMsg.text}
+                </span>
+                <button type="button" onClick={() => setBackupActionMsg(null)} className="font-bold opacity-70 hover:opacity-100 ml-4">✕</button>
               </div>
-              <div className="flex bg-slate-100 dark:bg-slate-800 p-1 rounded-lg w-fit ml-auto">
-                <button type="button" onClick={() => applyTheme('light')} className={`flex items-center px-4 py-2 rounded-md text-xs font-bold transition-all ${theme === 'light' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}><Sun className="w-3.5 h-3.5 mr-2" /> Light</button>
-                <button type="button" onClick={() => applyTheme('dark')} className={`flex items-center px-4 py-2 rounded-md text-xs font-bold transition-all ${theme === 'dark' ? 'bg-slate-900 text-white shadow-sm' : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-300'}`}><Moon className="w-3.5 h-3.5 mr-2" /> Dark</button>
+            )}
+
+            {/* Auto-Backup Frequency Selection */}
+            <div className="space-y-3">
+              <label className="block text-[11px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
+                1. Select Auto-Backup Frequency
+              </label>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                {[
+                  {
+                    id: 'every_transaction' as BackupFrequency,
+                    title: 'After Every Transaction',
+                    desc: 'Instant backup whenever any invoice, bill, item or voucher is saved',
+                    icon: Zap,
+                    badge: 'Recommended'
+                  },
+                  {
+                    id: 'daily' as BackupFrequency,
+                    title: 'Once a Day (Daily)',
+                    desc: 'Automated snapshot every 24 hours',
+                    icon: Calendar,
+                    badge: 'Popular'
+                  },
+                  {
+                    id: 'weekly' as BackupFrequency,
+                    title: 'Once a Week (Weekly)',
+                    desc: 'Automated snapshot every 7 days',
+                    icon: Clock
+                  },
+                  {
+                    id: 'monthly' as BackupFrequency,
+                    title: 'Once a Month (Monthly)',
+                    desc: 'Automated snapshot every 30 days',
+                    icon: Layers
+                  },
+                  {
+                    id: 'manual_only' as BackupFrequency,
+                    title: 'Manual Only',
+                    desc: 'Automatic backups paused. Download manually when needed',
+                    icon: ShieldCheck
+                  }
+                ].map((item) => {
+                  const isSelected = backupConfig.frequency === item.id;
+                  const Icon = item.icon;
+                  return (
+                    <div
+                      key={item.id}
+                      onClick={() => handleUpdateFrequency(item.id)}
+                      className={`p-3.5 rounded-xl border transition-all cursor-pointer relative flex flex-col justify-between ${
+                        isSelected 
+                          ? 'border-emerald-500 bg-emerald-50/50 dark:bg-emerald-950/40 shadow-xs ring-1 ring-emerald-500/50' 
+                          : 'border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-850 hover:border-slate-300 dark:hover:border-slate-700'
+                      }`}
+                    >
+                      {item.badge && (
+                        <span className="absolute top-2.5 right-2.5 text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded bg-emerald-100 dark:bg-emerald-900/60 text-emerald-800 dark:text-emerald-300">
+                          {item.badge}
+                        </span>
+                      )}
+                      <div className="flex items-start space-x-3 mb-2">
+                        <div className={`p-2 rounded-lg shrink-0 ${isSelected ? 'bg-emerald-600 text-white' : 'bg-slate-100 dark:bg-slate-800 text-slate-500'}`}>
+                          <Icon className="w-4 h-4" />
+                        </div>
+                        <div>
+                          <h4 className="text-xs font-bold text-slate-900 dark:text-slate-100">{item.title}</h4>
+                          <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5 leading-snug">{item.desc}</p>
+                        </div>
+                      </div>
+                      <div className="flex items-center justify-between pt-2 border-t border-slate-100 dark:border-slate-800/60 mt-1">
+                        <span className="text-[10px] text-slate-400">Status</span>
+                        <span className={`text-[10px] font-bold ${isSelected ? 'text-emerald-600 dark:text-emerald-400 flex items-center gap-1' : 'text-slate-400'}`}>
+                          {isSelected && <Check className="w-3 h-3" />} {isSelected ? 'Active' : 'Click to select'}
+                        </span>
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
             </div>
-          </div>
-        </div>
 
-        {/* Connection Mode Section */}
-        <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-md overflow-hidden shadow-sm">
-          <div className="p-6 border-b border-slate-100 dark:border-slate-800 bg-slate-50/30 dark:bg-slate-900/50">
-            <h3 className="text-xs font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest">Connection Mode</h3>
-          </div>
-          <div className="p-8">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-8 items-center text-left">
+            {/* Default Format & Auto-Download Preferences */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pt-2 border-t border-slate-100 dark:border-slate-800">
+              <div className="space-y-2">
+                <label className="block text-[11px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
+                  2. Default Format for Auto-Backup
+                </label>
+                <div className="flex items-center space-x-3">
+                  <button
+                    type="button"
+                    onClick={() => handleUpdateFormat('excel')}
+                    className={`flex-1 flex items-center justify-center space-x-2 py-2.5 px-4 rounded-lg border text-xs font-semibold transition-all ${
+                      backupConfig.format === 'excel'
+                        ? 'border-emerald-600 bg-emerald-50 dark:bg-emerald-950/40 text-emerald-800 dark:text-emerald-300 font-bold shadow-xs'
+                        : 'border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-50'
+                    }`}
+                  >
+                    <FileSpreadsheet className="w-4 h-4 text-emerald-600" />
+                    <span>Excel Workbook (.xlsx)</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleUpdateFormat('json')}
+                    className={`flex-1 flex items-center justify-center space-x-2 py-2.5 px-4 rounded-lg border text-xs font-semibold transition-all ${
+                      backupConfig.format === 'json'
+                        ? 'border-emerald-600 bg-emerald-50 dark:bg-emerald-950/40 text-emerald-800 dark:text-emerald-300 font-bold shadow-xs'
+                        : 'border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-50'
+                    }`}
+                  >
+                    <FileCode className="w-4 h-4 text-amber-600" />
+                    <span>JSON Archive (.json)</span>
+                  </button>
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <label className="block text-[11px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
+                  3. Browser Download On Schedule
+                </label>
+                <div className="flex items-center justify-between p-3 rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-850">
+                  <div>
+                    <span className="text-xs font-bold text-slate-800 dark:text-slate-200 block">Prompt File Download</span>
+                    <span className="text-[10px] text-slate-500 dark:text-slate-400">Trigger browser save dialog when automated backup runs</span>
+                  </div>
+                  <button 
+                    type="button" 
+                    onClick={handleToggleAutoDownload} 
+                    className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none items-center ${backupConfig.autoDownload ? 'bg-emerald-600' : 'bg-slate-300 dark:bg-slate-700'}`}
+                  >
+                    <span className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${backupConfig.autoDownload ? 'translate-x-5' : 'translate-x-0'}`} />
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            {/* Manual One-Click Export Actions */}
+            <div className="pt-4 border-t border-slate-100 dark:border-slate-800 space-y-3">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h4 className="text-xs font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wider">
+                    Manual Immediate Backup Export
+                  </h4>
+                  <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                    Download complete snapshot of your active database entries right now.
+                  </p>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <button
+                  type="button"
+                  disabled={isExporting !== null}
+                  onClick={() => handleManualBackup('excel')}
+                  className="flex items-center justify-between p-4 bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white rounded-xl shadow-sm transition-all cursor-pointer disabled:opacity-50"
+                >
+                  <div className="flex items-center space-x-3">
+                    <div className="p-2.5 bg-emerald-700/60 rounded-lg">
+                      <FileSpreadsheet className="w-5 h-5" />
+                    </div>
+                    <div className="text-left">
+                      <div className="text-xs font-bold">Download Excel File (.xlsx)</div>
+                      <div className="text-[10px] text-emerald-100">Multi-sheet workbook with all populated data</div>
+                    </div>
+                  </div>
+                  {isExporting === 'excel' ? <Loader2 className="w-5 h-5 animate-spin" /> : <Download className="w-5 h-5" />}
+                </button>
+
+                <button
+                  type="button"
+                  disabled={isExporting !== null}
+                  onClick={() => handleManualBackup('json')}
+                  className="flex items-center justify-between p-4 bg-slate-800 hover:bg-slate-900 active:bg-black text-white rounded-xl shadow-sm transition-all cursor-pointer disabled:opacity-50"
+                >
+                  <div className="flex items-center space-x-3">
+                    <div className="p-2.5 bg-slate-700 rounded-lg">
+                      <FileCode className="w-5 h-5 text-amber-300" />
+                    </div>
+                    <div className="text-left">
+                      <div className="text-xs font-bold">Download JSON File (.json)</div>
+                      <div className="text-[10px] text-slate-300">Clean portable data archive with metadata</div>
+                    </div>
+                  </div>
+                  {isExporting === 'json' ? <Loader2 className="w-5 h-5 animate-spin" /> : <Download className="w-5 h-5" />}
+                </button>
+              </div>
+            </div>
+
+            {/* Real-time Workspace Data Inventory */}
+            {workspaceData && (
+              <div className="pt-4 border-t border-slate-100 dark:border-slate-800 space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center space-x-2">
+                    <Layers className="w-4 h-4 text-slate-500" />
+                    <h4 className="text-xs font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wider">
+                      Current Data Backup Scope & Inventory
+                    </h4>
+                  </div>
+                  <span className="text-[11px] font-mono font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/40 px-2 py-0.5 rounded">
+                    {workspaceData.metadata.totalRecords} total active entries across {workspaceData.metadata.totalModules} modules
+                  </span>
+                </div>
+
+                <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                  The following populated modules will be packaged into your backup files. Any module with 0 records is omitted automatically:
+                </p>
+
+                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2.5">
+                  {workspaceData.metadata.modulesIncluded.map((mod) => (
+                    <div key={mod} className="p-2.5 rounded-lg border border-slate-100 dark:border-slate-800 bg-slate-50/60 dark:bg-slate-800/40 flex items-center justify-between">
+                      <span className="text-xs font-medium text-slate-700 dark:text-slate-300 truncate">
+                        {MODULE_DISPLAY_NAMES[mod] || mod}
+                      </span>
+                      <span className="text-[11px] font-bold font-mono px-2 py-0.5 rounded bg-white dark:bg-slate-700 text-slate-800 dark:text-slate-200 border border-slate-200 dark:border-slate-600 shadow-2xs">
+                        {workspaceData.tables[mod]?.length || 0}
+                      </span>
+                    </div>
+                  ))}
+                  {workspaceData.metadata.modulesIncluded.length === 0 && (
+                    <div className="col-span-full py-4 text-center text-xs text-slate-400">
+                      No records created yet. Start creating invoices, parties, or stock items to automatically include them.
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* Restore / Import Section */}
+            <div className="pt-4 border-t border-slate-100 dark:border-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
               <div>
-                <h4 className="text-sm font-bold text-slate-900 dark:text-slate-100 mb-1">
-                  {localStorage.getItem('use_offline_mode') === 'true' ? 'Offline Local Storage' : 'Cloud Database (Supabase)'}
+                <h4 className="text-xs font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wider">
+                  Restore from JSON Backup
                 </h4>
-                <p className="text-xs text-slate-500 dark:text-slate-400">
-                  {localStorage.getItem('use_offline_mode') === 'true' 
-                    ? 'You are running the app entirely offline. Data is securely persisted in your browser.' 
-                    : 'Your workspace is synchronized in real-time with the secure Cloud database.'}
+                <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                  Select any previous JSON backup file to restore records directly into your workspace.
                 </p>
               </div>
-              <div className="flex justify-end">
-                {localStorage.getItem('use_offline_mode') === 'true' ? (
-                  <button
-                    type="button"
-                    onClick={async () => {
-                      localStorage.removeItem('use_offline_mode');
-                      await processOfflineSyncQueue();
-                      window.location.reload();
-                    }}
-                    className="px-4 py-2.5 bg-primary hover:bg-primary-dark text-white text-xs font-bold rounded shadow-sm transition-colors uppercase tracking-wider"
-                  >
-                    Switch to Cloud Mode
-                  </button>
-                ) : (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      localStorage.setItem('use_offline_mode', 'true');
-                      window.location.reload();
-                    }}
-                    className="px-4 py-2.5 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs font-bold rounded shadow-sm border border-slate-200 dark:border-slate-700 transition-colors uppercase tracking-wider"
-                  >
-                    Switch to Offline Mode
-                  </button>
-                )}
+
+              <label className="inline-flex items-center justify-center px-4 py-2 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 rounded-lg text-xs font-bold border border-slate-200 dark:border-slate-700 cursor-pointer transition-colors shrink-0 shadow-2xs">
+                {isRestoring ? <Loader2 className="w-3.5 h-3.5 animate-spin mr-2" /> : <Upload className="w-3.5 h-3.5 mr-2" />}
+                {isRestoring ? 'Restoring data...' : 'Select Backup File (.json)'}
+                <input
+                  type="file"
+                  accept=".json,application/json"
+                  onChange={handleRestoreFile}
+                  disabled={isRestoring}
+                  className="hidden"
+                />
+              </label>
+            </div>
+
+            {/* Backup Summary & History */}
+            <div className="pt-4 border-t border-slate-100 dark:border-slate-800 space-y-3">
+              <div className="flex items-center justify-between text-xs">
+                <span className="text-slate-500 dark:text-slate-400 font-medium">Last successful backup:</span>
+                <span className="font-bold font-mono text-slate-800 dark:text-slate-200">
+                  {formatLastBackupTime(backupConfig.lastBackupTimestamp)}
+                </span>
               </div>
+
+              {backupHistory.length > 0 && (
+                <div className="space-y-1.5 mt-2">
+                  <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider">
+                    Recent Backup History
+                  </span>
+                  <div className="max-h-36 overflow-y-auto space-y-1.5 pr-1">
+                    {backupHistory.slice(0, 5).map((h) => (
+                      <div key={h.id} className="p-2 rounded bg-slate-50 dark:bg-slate-850 border border-slate-100 dark:border-slate-800/80 flex items-center justify-between text-[11px]">
+                        <div className="flex items-center space-x-2 truncate">
+                          <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold uppercase ${h.format === 'excel' ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/60 dark:text-emerald-300' : 'bg-amber-100 text-amber-800 dark:bg-amber-900/60 dark:text-amber-300'}`}>
+                            {h.format}
+                          </span>
+                          <span className="font-mono text-slate-700 dark:text-slate-300 truncate">{h.filename}</span>
+                        </div>
+                        <div className="flex items-center space-x-3 text-slate-400 shrink-0 text-[10px]">
+                          <span>{h.totalRecords} records</span>
+                          <span>{new Date(h.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         </div>
@@ -394,20 +760,20 @@ const Settings = () => {
               </button>
             </div>
             {gstConfig.enabled && (
-                <div className="animate-in slide-in-from-top-2 duration-300 grid grid-cols-1 md:grid-cols-2 gap-8 items-center border-t border-slate-100 dark:border-slate-800 pt-8">
-                    <div><h4 className="text-sm font-bold text-slate-900 dark:text-slate-100 mb-1">Select GST Type</h4><p className="text-xs text-slate-500 dark:text-slate-400">Ledgers will be created automatically based on your choice.</p></div>
-                    <div className="relative">
-                        <select 
-                            value={gstConfig.type} 
-                            onChange={(e) => setGstConfig({ ...gstConfig, type: e.target.value })} 
-                            className="w-full px-4 py-2.5 border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white rounded text-sm font-medium outline-none focus:border-slate-400 dark:focus:border-slate-500 appearance-none"
-                        >
-                            <option value="CGST - SGST" className="bg-white dark:bg-slate-800 text-slate-900 dark:text-white">CGST - SGST (Intra-State)</option>
-                            <option value="IGST" className="bg-white dark:bg-slate-800 text-slate-900 dark:text-white">IGST (Inter-State)</option>
-                        </select>
-                        <Percent className="w-4 h-4 absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
-                    </div>
+              <div className="animate-in slide-in-from-top-2 duration-300 grid grid-cols-1 md:grid-cols-2 gap-8 items-center border-t border-slate-100 dark:border-slate-800 pt-8">
+                <div><h4 className="text-sm font-bold text-slate-900 dark:text-slate-100 mb-1">Select GST Type</h4><p className="text-xs text-slate-500 dark:text-slate-400">Ledgers will be created automatically based on your choice.</p></div>
+                <div className="relative">
+                  <select 
+                    value={gstConfig.type} 
+                    onChange={(e) => setGstConfig({ ...gstConfig, type: e.target.value })} 
+                    className="w-full px-4 py-2.5 border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white rounded text-sm font-medium outline-none focus:border-slate-400 dark:focus:border-slate-500 appearance-none"
+                  >
+                    <option value="CGST - SGST" className="bg-white dark:bg-slate-800 text-slate-900 dark:text-white">CGST - SGST (Intra-State)</option>
+                    <option value="IGST" className="bg-white dark:bg-slate-800 text-slate-900 dark:text-white">IGST (Inter-State)</option>
+                  </select>
+                  <Percent className="w-4 h-4 absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
                 </div>
+              </div>
             )}
           </div>
         </div>
@@ -447,168 +813,77 @@ const Settings = () => {
           <div className="flex overflow-x-auto border-b border-slate-100 dark:border-slate-800 scrollbar-none bg-slate-50/10 dark:bg-slate-900/10">
             {recycleTabs.map(tab => (
               <button 
-                key={tab} 
-                onClick={() => setRecycleTab(tab)} 
-                className={`px-6 py-3 text-[10px] font-bold uppercase tracking-widest whitespace-nowrap transition-all border-b-2 ${recycleTab === tab ? 'border-primary text-slate-900 dark:text-white' : 'border-transparent text-slate-400 hover:text-slate-600 dark:hover:text-slate-300'}`}
+                key={tab}
+                type="button"
+                onClick={() => setRecycleTab(tab)}
+                className={`px-4 py-3 text-xs font-bold whitespace-nowrap transition-colors border-b-2 ${recycleTab === tab ? 'border-primary text-primary bg-white dark:bg-slate-900' : 'border-transparent text-slate-400 hover:text-slate-600 dark:hover:text-slate-200'}`}
               >
                 {tab}
               </button>
             ))}
           </div>
 
-          <div className="min-h-[300px] max-h-[500px] overflow-y-auto custom-scrollbar overflow-x-auto">
+          <div className="p-6">
             {recycleLoading ? (
-              <div className="flex items-center justify-center py-20"><Loader2 className="w-6 h-6 animate-spin text-primary" /></div>
+              <div className="py-12 text-center text-slate-400"><Loader2 className="w-6 h-6 animate-spin inline" /></div>
             ) : filteredDeleted.length === 0 ? (
-              <div className="flex flex-col items-center justify-center py-24 text-slate-300 dark:text-slate-700 italic">
-                <Trash2 className="w-12 h-12 mb-4 opacity-20" />
-                <p className="text-xs">Recycle bin is empty for this category.</p>
-              </div>
+              <div className="py-12 text-center text-slate-400 text-xs font-medium">Recycle bin is empty.</div>
             ) : (
-              <table className="w-full text-left border-collapse min-w-[600px]">
-                <thead className="bg-slate-50 dark:bg-slate-800 sticky top-0 z-10">
-                  <tr className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-tighter">
-                    <th className="px-6 py-3 border-b border-slate-100 dark:border-slate-800">Source Screen</th>
-                    <th className="px-6 py-3 border-b border-slate-100 dark:border-slate-800">Name / Reference</th>
-                    <th className="px-6 py-3 border-b border-slate-100 dark:border-slate-800 text-right">Actions</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-                  {filteredDeleted.map((item, idx) => (
-                    <tr key={`${item.table}-${item.id}`} className="hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors">
-                      <td className="px-6 py-4">
-                        <span className="text-[9px] font-bold uppercase px-2 py-0.5 bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 rounded">{item.origin}</span>
-                      </td>
-                      <td className="px-6 py-4 text-xs font-medium text-slate-700 dark:text-slate-300 capitalize">{item.label}</td>
-                      <td className="px-6 py-4 text-right">
-                        <div className="flex justify-end items-center space-x-2">
-                          <button 
-                            onClick={() => handleRecover(item)} 
-                            className="p-1.5 text-emerald-500 hover:bg-emerald-50 dark:hover:bg-emerald-900/20 rounded transition-colors"
-                            title="Recover Item"
-                          >
-                            <RotateCcw className="w-4 h-4" />
-                          </button>
-                          <button 
-                            onClick={() => handlePermanentDelete(item)} 
-                            className="p-1.5 text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-900/20 rounded transition-colors"
-                            title="Delete Permanently"
-                          >
-                            <Trash className="w-4 h-4" />
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+              <div className="divide-y divide-slate-100 dark:divide-slate-800">
+                {filteredDeleted.map((item, idx) => (
+                  <div key={idx} className="py-3 flex items-center justify-between">
+                    <div>
+                      <p className="text-sm font-bold text-slate-800 dark:text-slate-200">{item.label}</p>
+                      <p className="text-[11px] text-slate-400 uppercase tracking-wider">{item.origin}</p>
+                    </div>
+                    <div className="flex items-center space-x-2">
+                      <button 
+                        type="button" 
+                        onClick={() => handleRecover(item)}
+                        className="px-3 py-1.5 bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800 rounded text-xs font-bold hover:bg-emerald-100 dark:hover:bg-emerald-900/50 transition-colors"
+                      >
+                        Restore
+                      </button>
+                      <button 
+                        type="button" 
+                        onClick={() => handlePermanentDelete(item)}
+                        className="p-1.5 text-slate-400 hover:text-red-600 transition-colors"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
             )}
           </div>
         </div>
       </div>
 
-      {/* Offline Execution & Desktop .EXE Package */}
-      <div className="space-y-4 pt-4 border-t border-slate-200 dark:border-slate-800 text-left">
-        <div className="flex items-center space-x-2">
-          <HardDrive className="w-4 h-4 text-primary dark:text-red-400" />
-          <h3 className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest">Offline Execution & Desktop (.EXE) Backup</h3>
+      {/* Delete Workspace Danger Zone */}
+      <div className="bg-rose-50/50 dark:bg-rose-950/20 border border-rose-100 dark:border-rose-900/40 rounded-md p-6 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+        <div>
+          <h4 className="text-sm font-bold text-rose-800 dark:text-rose-400">Delete This Workspace</h4>
+          <p className="text-xs text-rose-600/80 dark:text-rose-400/70 mt-0.5">Deleting will move this entire company workspace to the recycle bin.</p>
         </div>
-        <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg p-6 space-y-6 shadow-sm">
-          <div>
-            <h4 className="text-sm font-bold text-slate-900 dark:text-slate-100 mb-1">Local Hard Disk Sync & Offline Mode</h4>
-            <p className="text-xs text-slate-500 dark:text-slate-400">
-              Run your billing register completely offline without internet. Save live data directly to your local computer folder or compile a standalone Windows Desktop (.EXE) launcher.
-            </p>
-          </div>
-
-          {offlineStatusMsg && (
-            <div className="p-3.5 bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 rounded-md text-xs font-medium text-slate-700 dark:text-slate-200 flex items-center justify-between">
-              <span>{offlineStatusMsg}</span>
-              <button onClick={() => setOfflineStatusMsg('')} className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 ml-4 font-bold">✕</button>
-            </div>
-          )}
-
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-2">
-            <div className="border border-slate-200 dark:border-slate-800 rounded-lg p-4.5 bg-slate-50/50 dark:bg-slate-800/40 flex flex-col justify-between">
-              <div className="space-y-1.5 mb-4">
-                <div className="flex items-center space-x-2 text-slate-900 dark:text-slate-100 font-bold text-xs">
-                  <FolderSymlink className="w-4 h-4 text-amber-500" />
-                  <span>Save Data in Hard Disk Folder</span>
-                </div>
-                <p className="text-[11px] text-slate-500 dark:text-slate-400 leading-relaxed">
-                  Export all invoices, inventory, customers, and cashbook records directly to a chosen folder on your local hard disk drive.
-                </p>
-              </div>
-              <button 
-                onClick={handleExportDiskFolder} 
-                disabled={offlineActionLoading}
-                className="w-full py-2 px-3 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 hover:border-slate-300 dark:hover:border-slate-600 text-slate-800 dark:text-slate-200 font-bold text-xs rounded shadow-sm hover:bg-slate-50 dark:hover:bg-slate-700/60 transition-all flex items-center justify-center active:scale-95"
-              >
-                {offlineActionLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin mr-2" /> : <HardDrive className="w-3.5 h-3.5 mr-2 text-amber-500" />}
-                Sync to Hard Disk Folder
-              </button>
-            </div>
-
-            <div className="border border-slate-200 dark:border-slate-800 rounded-lg p-4.5 bg-slate-50/50 dark:bg-slate-800/40 flex flex-col justify-between">
-              <div className="space-y-1.5 mb-4">
-                <div className="flex items-center space-x-2 text-slate-900 dark:text-slate-100 font-bold text-xs">
-                  <Laptop className="w-4 h-4 text-emerald-500" />
-                  <span>Standalone Offline App (.html)</span>
-                </div>
-                <p className="text-[11px] text-slate-500 dark:text-slate-400 leading-relaxed">
-                  Download a 100% self-contained single-file offline application. Double click anytime on PC or tablet to view & print statements without server.
-                </p>
-              </div>
-              <button 
-                onClick={handleDownloadOfflineHtml} 
-                disabled={offlineActionLoading}
-                className="w-full py-2 px-3 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 hover:border-slate-300 dark:hover:border-slate-600 text-slate-800 dark:text-slate-200 font-bold text-xs rounded shadow-sm hover:bg-slate-50 dark:hover:bg-slate-700/60 transition-all flex items-center justify-center active:scale-95"
-              >
-                {offlineActionLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin mr-2" /> : <Download className="w-3.5 h-3.5 mr-2 text-emerald-500" />}
-                Download Offline App
-              </button>
-            </div>
-
-            <div className="border border-slate-200 dark:border-slate-800 rounded-lg p-4.5 bg-slate-50/50 dark:bg-slate-800/40 flex flex-col justify-between relative overflow-hidden">
-              <div className="absolute top-0 right-0 bg-primary text-white text-[9px] font-extrabold uppercase px-2 py-0.5 rounded-bl">Desktop</div>
-              <div className="space-y-1.5 mb-4">
-                <div className="flex items-center space-x-2 text-slate-900 dark:text-slate-100 font-bold text-xs">
-                  <Cpu className="w-4 h-4 text-blue-500" />
-                  <span>Windows Desktop (.EXE) File</span>
-                </div>
-                <p className="text-[11px] text-slate-500 dark:text-slate-400 leading-relaxed">
-                  Package Stock Register as a native Windows Desktop (.exe) application executable with native window frame and offline storage capability.
-                </p>
-              </div>
-              <button 
-                onClick={handleDownloadExeBuilder} 
-                className="w-full py-2 px-3 bg-primary hover:bg-primary-dark text-white font-bold text-xs rounded shadow transition-all flex items-center justify-center active:scale-95"
-              >
-                <Download className="w-3.5 h-3.5 mr-2" />
-                Build Desktop .EXE
-              </button>
-            </div>
-          </div>
-        </div>
+        <button
+          type="button"
+          onClick={() => setIsDeleteConfirmOpen(true)}
+          className="px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold rounded shadow-sm transition-colors uppercase tracking-wider shrink-0"
+        >
+          Delete Workspace
+        </button>
       </div>
 
-      <div className="space-y-4 pt-4 border-t border-slate-200 dark:border-slate-800 text-left">
-        <div className="flex items-center space-x-2">
-          <AlertTriangle className="w-4 h-4 text-rose-500" />
-          <h3 className="text-xs font-bold text-rose-500 uppercase tracking-widest">Danger Zone</h3>
-        </div>
-        <div className="bg-white dark:bg-slate-900 border border-rose-100 dark:border-rose-900/30 rounded-md p-6 flex flex-col md:flex-row md:items-center justify-between gap-4 shadow-sm">
-          <div>
-            <h4 className="text-sm font-bold text-slate-900 dark:text-slate-100 capitalize mb-1">Delete Workspace Forever</h4>
-            <p className="text-xs text-slate-500 dark:text-slate-400">Permanently remove this workspace and all associated data. This action is irreversible.</p>
-          </div>
-          <button onClick={() => setIsDeleteConfirmOpen(true)} className="px-6 py-2 border border-rose-200 dark:border-rose-900/50 text-rose-600 dark:text-rose-50 rounded-md text-[13px] font-bold hover:bg-rose-50 dark:hover:bg-rose-900/20 transition-colors flex items-center capitalize">
-            <Trash2 className="w-3.5 h-3.5 mr-2" /> Delete Workspace
-          </button>
-        </div>
-      </div>
-
-      <ConfirmDialog isOpen={isDeleteConfirmOpen} onClose={() => setIsDeleteConfirmOpen(false)} onConfirm={handleDeleteWorkspace} title="Delete Current Workspace" message={`Are you sure you want to permanently delete "${workspaceInfo.name}"? All invoices, ledgers, and inventory data will be wiped out.`} />
+      <ConfirmDialog
+        isOpen={isDeleteConfirmOpen}
+        title="Delete Current Workspace?"
+        message={`Are you sure you want to delete "${workspaceInfo.name || 'this workspace'}"? It can be recovered later from the Recycle Bin.`}
+        onConfirm={handleDeleteWorkspace}
+        onClose={() => setIsDeleteConfirmOpen(false)}
+        confirmLabel="Yes, Move to Recycle Bin"
+        variant="danger"
+      />
     </div>
   );
 };
