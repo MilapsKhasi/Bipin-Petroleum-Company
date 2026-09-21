@@ -223,7 +223,7 @@ export async function getPopulatedWorkspaceData(targetCompanyId?: string): Promi
   return {
     metadata: {
       appName: 'Bipin Petroleum Co. Purchase & Stock Management System',
-      version: '26.7.1',
+      version: '1.0',
       generatedAt: now.toISOString(),
       companyId: activeComp.id,
       companyName: activeComp.name || 'Bipin Petroleum Co.',

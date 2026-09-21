@@ -1,6 +1,6 @@
 {
   "name": "purchase-master",
-  "version": "26.7.1",
+  "version": "1.0.0",
   "description": "Bipin Petroleum Co. Purchase and Stock Management System",
   "author": "Bipin Petroleum Co.",
   "private": true,
@@ -70,7 +70,6 @@
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "react-router-dom": "^7.1.0",
-    "recharts": "^2.13.0",
     "tailwindcss": "^4.3.3",
     "xlsx": "0.18.5"
   },

@@ -7,7 +7,6 @@ import { useCompany } from '../context/CompanyContext';
 import Logo from './Logo';
 import Modal from './Modal';
 import ConfirmDialog from './ConfirmDialog';
-import UpdateNotification from './UpdateNotification';
 import CreateNewModal from './CreateNewModal';
 import GlobalSearchModal from './GlobalSearchModal';
 import ImportExcelModal from './ImportExcelModal';
@@ -591,8 +590,6 @@ const Layout = () => {
         title="Delete Workspace" 
         message={`This will permanently remove "${deleteConfirm.ws?.name}" and all its data. Are you sure?`} 
       />
-
-      <UpdateNotification />
     </div>
   );
 };

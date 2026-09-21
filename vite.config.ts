@@ -9,7 +9,7 @@ export default defineConfig({
     react()
   ],
   resolve: {
-    dedupe: ['react', 'react-dom', 'react-router-dom']
+    dedupe: ['react', 'react-dom', 'react-router', 'react-router-dom']
   },
   define: {
     global: 'globalThis',
