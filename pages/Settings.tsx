@@ -25,7 +25,12 @@ import {
   Calendar, 
   Zap, 
   FileText,
-  AlertCircle
+  AlertCircle,
+  Landmark,
+  CreditCard,
+  QrCode,
+  Phone,
+  User
 } from 'lucide-react';
 import { getActiveCompanyId, safeSupabaseSave, getAppSettings, formatDate } from '../utils/helpers';
 import { supabase } from '../lib/supabase';
@@ -51,7 +56,18 @@ const Settings = () => {
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [workspaceInfo, setWorkspaceInfo] = useState({ name: '', gstin: '', address: '' });
+  const [workspaceInfo, setWorkspaceInfo] = useState({ 
+    name: '', 
+    gstin: '', 
+    address: '',
+    phone: '',
+    bank_name: '',
+    account_holder: '',
+    account_number: '',
+    ifsc_code: '',
+    branch: '',
+    upi_id: '',
+  });
   const [theme, setTheme] = useState(() => localStorage.getItem('app_theme') || 'light');
   
   const [gstConfig, setGstConfig] = useState(() => {
@@ -101,7 +117,18 @@ const Settings = () => {
       const { data, error } = await supabase.from('companies').select('*').eq('id', cid).single();
       if (error) throw error;
       if (data) {
-        setWorkspaceInfo({ name: data.name || '', gstin: data.gstin || '', address: data.address || '' });
+        setWorkspaceInfo({ 
+          name: data.name || '', 
+          gstin: data.gstin || '', 
+          address: data.address || '',
+          phone: data.phone || '',
+          bank_name: data.bank_name || data.bank_details?.bank_name || '',
+          account_holder: data.account_holder || data.account_name || data.bank_details?.account_holder || data.bank_details?.account_name || '',
+          account_number: data.account_number || data.bank_details?.account_number || '',
+          ifsc_code: data.ifsc_code || data.ifsc || data.bank_details?.ifsc_code || data.bank_details?.ifsc || '',
+          branch: data.branch || data.bank_branch || data.bank_details?.branch || '',
+          upi_id: data.upi_id || data.bank_details?.upi_id || '',
+        });
       }
 
       const settings = getAppSettings();
@@ -318,7 +345,33 @@ const Settings = () => {
     if (!cid) return;
     setSaving(true);
     try {
-      await safeSupabaseSave('companies', workspaceInfo, cid);
+      const payload = {
+        name: workspaceInfo.name,
+        gstin: workspaceInfo.gstin,
+        address: workspaceInfo.address,
+        phone: workspaceInfo.phone,
+        bank_name: workspaceInfo.bank_name,
+        account_holder: workspaceInfo.account_holder,
+        account_number: workspaceInfo.account_number,
+        ifsc_code: workspaceInfo.ifsc_code,
+        branch: workspaceInfo.branch,
+        upi_id: workspaceInfo.upi_id,
+        account_name: workspaceInfo.account_holder,
+        ifsc: workspaceInfo.ifsc_code,
+        bank_branch: workspaceInfo.branch,
+        bank_details: {
+          bank_name: workspaceInfo.bank_name,
+          account_holder: workspaceInfo.account_holder,
+          account_name: workspaceInfo.account_holder,
+          account_number: workspaceInfo.account_number,
+          ifsc_code: workspaceInfo.ifsc_code,
+          ifsc: workspaceInfo.ifsc_code,
+          branch: workspaceInfo.branch,
+          upi_id: workspaceInfo.upi_id,
+        }
+      };
+
+      await safeSupabaseSave('companies', payload, cid);
       localStorage.setItem('activeCompanyName', workspaceInfo.name);
 
       const currentSettings = getAppSettings();
@@ -778,20 +831,220 @@ const Settings = () => {
           </div>
         </div>
 
-        {/* Business Info Section */}
+        {/* Workspace Information & Bank Details Section */}
         <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-md overflow-hidden shadow-sm text-left">
           <div className="p-6 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between bg-slate-50/30 dark:bg-slate-900/50">
-            <h3 className="text-xs font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest">Business Information</h3>
+            <div className="flex items-center space-x-2">
+              <Building2 className="w-4 h-4 text-primary" />
+              <h3 className="text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-widest">Workspace Information & Bank Details</h3>
+            </div>
             <button type="submit" disabled={saving} className="bg-primary text-white px-8 py-2 rounded-md font-bold text-[13px] capitalize hover:bg-primary-dark disabled:opacity-50 flex items-center shadow-sm">
               {saving ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Save className="w-4 h-4 mr-2" />} Save Changes
             </button>
           </div>
-          <div className="p-8 space-y-6">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-              <div className="space-y-1.5"><label className="text-[11px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-tight">Legal Business Name</label><div className="relative"><Building2 className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-300 dark:text-slate-600" /><input required value={workspaceInfo.name} onChange={(e) => setWorkspaceInfo({...workspaceInfo, name: e.target.value})} className="w-full pl-10 pr-4 py-2.5 border border-slate-200 dark:border-slate-700 rounded text-sm font-medium capitalize outline-none focus:border-slate-400 dark:focus:border-slate-500 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100" placeholder="Company Name" /></div></div>
-              <div className="space-y-1.5"><label className="text-[11px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-tight">GSTIN Number</label><div className="relative"><Fingerprint className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-300 dark:text-slate-600" /><input value={workspaceInfo.gstin} onChange={(e) => setWorkspaceInfo({...workspaceInfo, gstin: e.target.value.toUpperCase()})} className="w-full pl-10 pr-4 py-2.5 border border-slate-200 dark:border-slate-700 rounded text-sm font-mono outline-none focus:border-slate-400 dark:focus:border-slate-500 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 uppercase" placeholder="27AAAAA0000A1Z5" /></div></div>
+          <div className="p-8 space-y-8">
+            {/* 1. General Business Profile */}
+            <div>
+              <h4 className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-4 flex items-center gap-1.5">
+                <FileText className="w-3.5 h-3.5 text-slate-400" /> Business Profile
+              </h4>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="space-y-1.5">
+                  <label className="text-[11px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-tight">Legal Business / Workspace Name</label>
+                  <div className="relative">
+                    <Building2 className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 dark:text-slate-500" />
+                    <input 
+                      required 
+                      value={workspaceInfo.name} 
+                      onChange={(e) => setWorkspaceInfo({...workspaceInfo, name: e.target.value})} 
+                      className="w-full pl-10 pr-4 py-2.5 border border-slate-200 dark:border-slate-700 rounded text-sm font-medium outline-none focus:border-slate-400 dark:focus:border-slate-500 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100" 
+                      placeholder="e.g. Bipin Petroleum Co." 
+                    />
+                  </div>
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="text-[11px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-tight">GSTIN Number</label>
+                  <div className="relative">
+                    <Fingerprint className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 dark:text-slate-500" />
+                    <input 
+                      value={workspaceInfo.gstin} 
+                      onChange={(e) => setWorkspaceInfo({...workspaceInfo, gstin: e.target.value.toUpperCase()})} 
+                      className="w-full pl-10 pr-4 py-2.5 border border-slate-200 dark:border-slate-700 rounded text-sm font-mono outline-none focus:border-slate-400 dark:focus:border-slate-500 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 uppercase" 
+                      placeholder="27AAAAA0000A1Z5" 
+                    />
+                  </div>
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="text-[11px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-tight">Business Contact Phone</label>
+                  <div className="relative">
+                    <Phone className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 dark:text-slate-500" />
+                    <input 
+                      value={workspaceInfo.phone} 
+                      onChange={(e) => setWorkspaceInfo({...workspaceInfo, phone: e.target.value})} 
+                      className="w-full pl-10 pr-4 py-2.5 border border-slate-200 dark:border-slate-700 rounded text-sm font-medium outline-none focus:border-slate-400 dark:focus:border-slate-500 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100" 
+                      placeholder="+91 98765 43210" 
+                    />
+                  </div>
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="text-[11px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-tight">Registered Office Address</label>
+                  <div className="relative">
+                    <MapPin className="w-4 h-4 absolute left-3 top-3 text-slate-400 dark:text-slate-500" />
+                    <textarea 
+                      value={workspaceInfo.address} 
+                      onChange={(e) => setWorkspaceInfo({...workspaceInfo, address: e.target.value})} 
+                      className="w-full pl-10 pr-4 py-2.5 border border-slate-200 dark:border-slate-700 rounded text-sm outline-none focus:border-slate-400 dark:focus:border-slate-500 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 resize-none" 
+                      rows={2} 
+                      placeholder="Complete office address..." 
+                    />
+                  </div>
+                </div>
+              </div>
             </div>
-            <div className="space-y-1.5"><label className="text-[11px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-tight">Registered Office Address</label><div className="relative"><MapPin className="w-4 h-4 absolute left-3 top-4 text-slate-300 dark:text-slate-600" /><textarea value={workspaceInfo.address} onChange={(e) => setWorkspaceInfo({...workspaceInfo, address: e.target.value})} className="w-full pl-10 pr-4 py-3 border border-slate-200 dark:border-slate-700 rounded text-sm outline-none focus:border-slate-400 dark:focus:border-slate-500 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 resize-none" rows={4} placeholder="Complete office address..." /></div></div>
+
+            {/* 2. Bank Details for Sales Invoices */}
+            <div className="pt-6 border-t border-slate-100 dark:border-slate-800">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-4">
+                <div>
+                  <h4 className="text-xs font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wider flex items-center gap-1.5">
+                    <Landmark className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+                    Bank Details (Printed on Sales Invoices)
+                  </h4>
+                  <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
+                    Enter your business bank account details. These will be printed on the bottom-left of your sales invoices exactly as saved.
+                  </p>
+                </div>
+                <span className="text-[10px] font-semibold text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800/60 px-2.5 py-1 rounded-full shrink-0 flex items-center gap-1 w-fit">
+                  <CheckCircle2 className="w-3 h-3 text-emerald-600" /> Prints on Sales Invoices
+                </span>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="space-y-1.5">
+                  <label className="text-[11px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-tight">Bank Name</label>
+                  <div className="relative">
+                    <Landmark className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 dark:text-slate-500" />
+                    <input 
+                      value={workspaceInfo.bank_name} 
+                      onChange={(e) => setWorkspaceInfo({...workspaceInfo, bank_name: e.target.value})} 
+                      className="w-full pl-10 pr-4 py-2.5 border border-slate-200 dark:border-slate-700 rounded text-sm font-medium outline-none focus:border-slate-400 dark:focus:border-slate-500 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100" 
+                      placeholder="e.g. State Bank of India / HDFC Bank" 
+                    />
+                  </div>
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="text-[11px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-tight">Account Holder Name</label>
+                  <div className="relative">
+                    <User className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 dark:text-slate-500" />
+                    <input 
+                      value={workspaceInfo.account_holder} 
+                      onChange={(e) => setWorkspaceInfo({...workspaceInfo, account_holder: e.target.value})} 
+                      className="w-full pl-10 pr-4 py-2.5 border border-slate-200 dark:border-slate-700 rounded text-sm font-medium outline-none focus:border-slate-400 dark:focus:border-slate-500 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100" 
+                      placeholder="e.g. Bipin Petroleum Co." 
+                    />
+                  </div>
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="text-[11px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-tight">Account Number</label>
+                  <div className="relative">
+                    <CreditCard className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 dark:text-slate-500" />
+                    <input 
+                      value={workspaceInfo.account_number} 
+                      onChange={(e) => setWorkspaceInfo({...workspaceInfo, account_number: e.target.value})} 
+                      className="w-full pl-10 pr-4 py-2.5 border border-slate-200 dark:border-slate-700 rounded text-sm font-mono outline-none focus:border-slate-400 dark:focus:border-slate-500 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100" 
+                      placeholder="e.g. 50200012345678" 
+                    />
+                  </div>
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="text-[11px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-tight">IFSC Code</label>
+                  <div className="relative">
+                    <Fingerprint className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 dark:text-slate-500" />
+                    <input 
+                      value={workspaceInfo.ifsc_code} 
+                      onChange={(e) => setWorkspaceInfo({...workspaceInfo, ifsc_code: e.target.value.toUpperCase()})} 
+                      className="w-full pl-10 pr-4 py-2.5 border border-slate-200 dark:border-slate-700 rounded text-sm font-mono outline-none focus:border-slate-400 dark:focus:border-slate-500 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 uppercase" 
+                      placeholder="e.g. HDFC0001234 / SBIN0001234" 
+                    />
+                  </div>
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="text-[11px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-tight">Branch (Optional)</label>
+                  <div className="relative">
+                    <MapPin className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 dark:text-slate-500" />
+                    <input 
+                      value={workspaceInfo.branch} 
+                      onChange={(e) => setWorkspaceInfo({...workspaceInfo, branch: e.target.value})} 
+                      className="w-full pl-10 pr-4 py-2.5 border border-slate-200 dark:border-slate-700 rounded text-sm font-medium outline-none focus:border-slate-400 dark:focus:border-slate-500 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100" 
+                      placeholder="e.g. Highway Circle Branch" 
+                    />
+                  </div>
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="text-[11px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-tight">UPI ID / VPA (Optional)</label>
+                  <div className="relative">
+                    <QrCode className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 dark:text-slate-500" />
+                    <input 
+                      value={workspaceInfo.upi_id} 
+                      onChange={(e) => setWorkspaceInfo({...workspaceInfo, upi_id: e.target.value})} 
+                      className="w-full pl-10 pr-4 py-2.5 border border-slate-200 dark:border-slate-700 rounded text-sm font-mono outline-none focus:border-slate-400 dark:focus:border-slate-500 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100" 
+                      placeholder="e.g. bipin@okaxis / business@upi" 
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Live Preview of how it will print on the Sales Invoice */}
+              <div className="mt-6 p-4 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-850">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
+                    Sales Invoice Print Preview (Bottom Footer)
+                  </span>
+                  <span className="text-[10px] text-slate-400 italic">
+                    Printed exactly as saved above
+                  </span>
+                </div>
+                <div className="bg-white dark:bg-slate-900 p-3.5 rounded-lg border border-slate-200 dark:border-slate-800 max-w-md text-xs space-y-1 shadow-2xs">
+                  <div className="text-[11px] italic font-semibold text-slate-500 mb-1 border-b border-slate-100 dark:border-slate-800 pb-1">
+                    Bank Details
+                  </div>
+                  <div className="flex justify-between py-0.5 text-slate-600 dark:text-slate-400">
+                    <span>Bank</span>
+                    <span className="font-semibold text-slate-900 dark:text-slate-100">{workspaceInfo.bank_name || '—'}</span>
+                  </div>
+                  {workspaceInfo.branch && (
+                    <div className="flex justify-between py-0.5 text-slate-600 dark:text-slate-400">
+                      <span>Branch</span>
+                      <span className="font-semibold text-slate-900 dark:text-slate-100">{workspaceInfo.branch}</span>
+                    </div>
+                  )}
+                  <div className="flex justify-between py-0.5 text-slate-600 dark:text-slate-400">
+                    <span>A/c Holder</span>
+                    <span className="font-semibold text-slate-900 dark:text-slate-100">{workspaceInfo.account_holder || '—'}</span>
+                  </div>
+                  <div className="flex justify-between py-0.5 text-slate-600 dark:text-slate-400">
+                    <span>A/c Number</span>
+                    <span className="font-semibold text-slate-900 dark:text-slate-100 font-mono">{workspaceInfo.account_number || '—'}</span>
+                  </div>
+                  <div className="flex justify-between py-0.5 text-slate-600 dark:text-slate-400">
+                    <span>IFSC Code</span>
+                    <span className="font-semibold text-slate-900 dark:text-slate-100 font-mono">{workspaceInfo.ifsc_code || '—'}</span>
+                  </div>
+                  <div className="flex justify-between py-0.5 text-slate-600 dark:text-slate-400">
+                    <span>UPI ID</span>
+                    <span className="font-semibold text-slate-900 dark:text-slate-100 font-mono">{workspaceInfo.upi_id || '—'}</span>
+                  </div>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
       </form>

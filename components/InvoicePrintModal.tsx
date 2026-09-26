@@ -40,7 +40,16 @@ export function numberToWords(num: number): string {
 
 export const InvoicePrintModal: React.FC<InvoicePrintModalProps> = ({ isOpen, onClose, invoice }) => {
   const cid = getActiveCompanyId();
-  const [company, setCompany] = useState<any>({});
+  const [company, setCompany] = useState<any>(() => {
+    try {
+      const cached = localStorage.getItem('local_db_companies');
+      if (cached && cid) {
+        const list = JSON.parse(cached);
+        return list.find((c: any) => c.id === cid) || {};
+      }
+    } catch {}
+    return {};
+  });
   const [customer, setCustomer] = useState<any>(null);
   const invoiceRef = useRef<HTMLDivElement>(null);
 
@@ -175,12 +184,13 @@ export const InvoicePrintModal: React.FC<InvoicePrintModalProps> = ({ isOpen, on
   const gstVal = invoice.total_gst !== undefined ? parseFloat(invoice.total_gst) : (isInterState ? totalIgst : (totalCgst + totalSgst));
   const grandTotalVal = invoice.grand_total !== undefined ? parseFloat(invoice.grand_total) : (taxableVal + gstVal + sumAdditionalCharges);
 
-  // Bank Details
-  const bankName = payment?.bank_name || company?.bank_name || company?.raw_data?.bank_name || '';
-  const bankHolder = payment?.account_holder || company?.account_holder || company?.account_name || company?.raw_data?.account_holder || '';
-  const bankAccount = payment?.account_number || company?.account_number || company?.raw_data?.account_number || '';
-  const bankIfsc = payment?.ifsc || company?.ifsc_code || company?.ifsc || company?.raw_data?.ifsc || '';
-  const bankUpi = payment?.upi_id || company?.upi_id || company?.raw_data?.upi_id || '';
+  // Bank Details: loaded from workspace settings (company) exactly as saved
+  const bankName = company?.bank_name || company?.bank_details?.bank_name || payment?.bank_name || company?.raw_data?.bank_name || '';
+  const bankHolder = company?.account_holder || company?.account_name || company?.bank_details?.account_holder || company?.bank_details?.account_name || payment?.account_holder || company?.raw_data?.account_holder || '';
+  const bankAccount = company?.account_number || company?.bank_details?.account_number || payment?.account_number || company?.raw_data?.account_number || '';
+  const bankIfsc = company?.ifsc_code || company?.ifsc || company?.bank_details?.ifsc_code || company?.bank_details?.ifsc || payment?.ifsc || company?.raw_data?.ifsc || '';
+  const bankBranch = company?.branch || company?.bank_branch || company?.bank_details?.branch || payment?.branch || '';
+  const bankUpi = company?.upi_id || company?.bank_details?.upi_id || payment?.upi_id || company?.raw_data?.upi_id || '';
 
   // Dynamic compression for single-page print layout when items > 8
   const itemCount = calculatedItems.length;
@@ -537,6 +547,12 @@ export const InvoicePrintModal: React.FC<InvoicePrintModalProps> = ({ isOpen, on
                 <span className="text-slate-500">Bank</span>
                 <span className="font-semibold text-slate-800">{bankName}</span>
               </div>
+              {bankBranch && (
+                <div className="flex justify-between">
+                  <span className="text-slate-500">Branch</span>
+                  <span className="font-semibold text-slate-800">{bankBranch}</span>
+                </div>
+              )}
               <div className="flex justify-between">
                 <span className="text-slate-500">A/c Holder</span>
                 <span className="font-semibold text-slate-800">{bankHolder}</span>

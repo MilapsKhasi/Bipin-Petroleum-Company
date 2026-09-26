@@ -1,4 +1,38 @@
 
+export interface BankDetails {
+  bank_name?: string;
+  account_holder?: string;
+  account_name?: string;
+  account_number?: string;
+  ifsc_code?: string;
+  ifsc?: string;
+  branch?: string;
+  bank_branch?: string;
+  upi_id?: string;
+}
+
+export interface Company {
+  id: string;
+  name: string;
+  gstin?: string;
+  address?: string;
+  phone?: string;
+  license_key?: string;
+  user_id?: string;
+  created_by?: string;
+  is_deleted?: boolean;
+  bank_name?: string;
+  account_holder?: string;
+  account_name?: string;
+  account_number?: string;
+  ifsc_code?: string;
+  ifsc?: string;
+  branch?: string;
+  bank_branch?: string;
+  upi_id?: string;
+  bank_details?: BankDetails;
+}
+
 export interface License {
   id: string;
   user_id: string;

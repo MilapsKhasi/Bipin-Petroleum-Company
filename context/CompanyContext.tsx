@@ -3,13 +3,7 @@ import { supabase } from '../lib/supabase';
 import { migrateCustomersToParties } from '../utils/partiesMigration';
 import { getActiveLicense, DEFAULT_LICENSE_KEY, ensureDefaultWorkspaceForLicense } from '../lib/licenseManager';
 
-interface Company {
-  id: string;
-  name: string;
-  gstin?: string;
-  address?: string;
-  license_key?: string;
-}
+import { Company } from '../types';
 
 interface CompanyContextType {
   activeCompany: Company | null;
@@ -104,6 +98,11 @@ export const CompanyProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
   useEffect(() => {
     refresh();
+    const handleSettingsChanged = () => {
+      refresh();
+    };
+    window.addEventListener('appSettingsChanged', handleSettingsChanged);
+    return () => window.removeEventListener('appSettingsChanged', handleSettingsChanged);
   }, []);
 
   useEffect(() => {
