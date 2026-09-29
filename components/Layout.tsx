@@ -13,6 +13,8 @@ import ImportExcelModal from './ImportExcelModal';
 import { getUserActivity } from '../utils/activityTracker';
 import { getActiveLicense, DEFAULT_LICENSE_KEY, removeActiveLicense } from '../lib/licenseManager';
 import BackupStatusBadge from './BackupStatusBadge';
+import FormActionButtons from './FormActionButtons';
+import SettingsModal from './SettingsModal';
 
 const Layout = () => {
   const [isSidebarOpen, setIsSidebarOpen] = useState(window.innerWidth > 1024);
@@ -20,6 +22,7 @@ const Layout = () => {
   const [workspaces, setWorkspaces] = useState<any[]>([]);
   const [showWorkspaceMenu, setShowWorkspaceMenu] = useState(false);
   const [isCreateNewModalOpen, setIsCreateNewModalOpen] = useState(false);
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isGlobalSearchOpen, setIsGlobalSearchOpen] = useState(false);
   const [isImportExcelOpen, setIsImportExcelOpen] = useState(false);
   const { activeCompany, setCompany } = useCompany();
@@ -73,6 +76,18 @@ const Layout = () => {
     };
     window.addEventListener('resize', handleResize);
     return () => window.removeEventListener('resize', handleResize);
+  }, []);
+
+  useEffect(() => {
+    if (location.pathname === '/settings') {
+      setIsSettingsOpen(true);
+    }
+  }, [location.pathname]);
+
+  useEffect(() => {
+    const handleOpenSettings = () => setIsSettingsOpen(true);
+    window.addEventListener('openSettingsModal', handleOpenSettings);
+    return () => window.removeEventListener('openSettingsModal', handleOpenSettings);
   }, []);
 
   // Universal Keyboard Shortcuts (Ctrl+K, Ctrl+N, Ctrl+S, Esc)
@@ -326,13 +341,6 @@ const Layout = () => {
         { icon: BookOpen, label: 'Cashbook', path: '/cashbook' },
         { icon: Percent, label: 'Additional Charges', path: '/additional-charges' },
         { icon: BarChart3, label: 'Reports', path: '/reports' },
-        { icon: MonitorPlay, label: 'User Activity', path: '/user-activity' },
-      ]
-    },
-    {
-      groupName: '',
-      items: [
-        { icon: SettingsIcon, label: 'Settings', path: '/settings' },
       ]
     }
   ];
@@ -527,10 +535,18 @@ const Layout = () => {
             </button>
             <button
               onClick={() => setIsCreateNewModalOpen(true)}
-              className="px-3.5 py-1.5 bg-white dark:bg-slate-900 text-black dark:text-white border border-primary font-semibold text-xs rounded-md capitalize hover:bg-slate-50 dark:hover:bg-slate-800/80 flex items-center gap-1.5 shadow-xs transition-all cursor-pointer"
+              className="px-4 py-2 bg-white dark:bg-slate-900 text-black dark:text-white border border-primary font-medium text-xs rounded capitalize hover:bg-slate-50 dark:hover:bg-slate-800/80 active:scale-[0.98] flex items-center gap-1.5 shadow-xs transition-all duration-150 cursor-pointer"
             >
               <Plus className="w-3.5 h-3.5 text-primary stroke-[2.5]" />
               <span>Quick Create</span>
+            </button>
+            <button
+              onClick={() => setIsSettingsOpen(true)}
+              className="px-4 py-2 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-700 font-medium text-xs rounded capitalize hover:bg-slate-50 dark:hover:bg-slate-800/80 active:scale-[0.98] flex items-center gap-1.5 shadow-2xs transition-all duration-150 cursor-pointer"
+              title="Settings"
+            >
+              <SettingsIcon className="w-3.5 h-3.5 text-slate-500 dark:text-slate-400" />
+              <span className="hidden sm:inline">Settings</span>
             </button>
           </div>
         </header>
@@ -551,6 +567,10 @@ const Layout = () => {
         <CreateNewModal
           isOpen={isCreateNewModalOpen}
           onClose={() => setIsCreateNewModalOpen(false)}
+        />
+        <SettingsModal
+          isOpen={isSettingsOpen}
+          onClose={() => setIsSettingsOpen(false)}
         />
         <main className="flex-1 overflow-y-auto p-3 sm:p-6 bg-[#F7F8FC] dark:bg-slate-950">
           <Outlet />
@@ -574,10 +594,20 @@ const Layout = () => {
                     <textarea value={wsFormData.address} onChange={e => setWsFormData({...wsFormData, address: e.target.value})} rows={3} className="w-full px-3 py-2 border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 rounded text-sm focus:border-slate-400 outline-none resize-none" />
                 </div>
             </div>
-            <div className="flex justify-end pt-2">
-                <button type="submit" className="bg-primary text-white px-8 py-2.5 rounded font-medium text-xs hover:bg-primary-dark capitalize shadow-sm flex items-center">
-                    <Save className="w-3.5 h-3.5 mr-2" /> {editingWs ? 'Update Workspace' : 'Create Workspace'}
-                </button>
+            <div className="pt-2">
+                <FormActionButtons
+                    primaryText={editingWs ? 'Update Workspace' : 'Create Workspace'}
+                    primaryType="submit"
+
+                    secondaryLeftText="Save & Continue"
+                    secondaryLeftType="submit"
+
+                    secondaryRightText="Save & Close"
+                    secondaryRightType="submit"
+
+                    discardText="Discard"
+                    discardOnClick={() => setIsEditModalOpen(false)}
+                />
             </div>
         </form>
       </Modal>

@@ -18,10 +18,12 @@ import Companies from './pages/Companies';
 import UserActivity from './pages/UserActivity';
 import DeliveryChallans from './pages/DeliveryChallans';
 import SplashScreen from './components/SplashScreen';
+import ToastContainer from './components/ToastContainer';
 import { CompanyProvider, useCompany } from './context/CompanyContext';
 import { supabase } from './lib/supabase';
 import { getActiveLicense } from './lib/licenseManager';
 import { processInactivity } from './utils/activityTracker';
+import { initGlobalShortcutListener } from './utils/shortcutManager';
 
 const AppContent = () => {
   const [session, setSession] = useState<any>(null);
@@ -32,6 +34,8 @@ const AppContent = () => {
   const { activeCompany, loading: companyLoading } = useCompany();
 
   useEffect(() => {
+    initGlobalShortcutListener();
+
     const splashTimer = setTimeout(() => {
       setIsSplashExiting(true);
       setTimeout(() => setShowSplash(false), 700);
@@ -113,12 +117,13 @@ const AppContent = () => {
           <Route path="additional-charges" element={<AdditionalCharges />} />
           <Route path="stock" element={<Stock />} />
           <Route path="reports" element={<Reports />} />
-          <Route path="user-activity" element={<UserActivity />} />
+          <Route path="user-activity" element={<Navigate to="/settings" replace />} />
           <Route path="settings" element={<Settings />} />
         </Route>
         
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
+      <ToastContainer />
     </div>
   );
 };

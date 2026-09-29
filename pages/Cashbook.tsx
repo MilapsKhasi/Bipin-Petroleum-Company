@@ -5,8 +5,10 @@ import { formatDate, formatCurrency } from '../utils/helpers';
 import { supabase } from '../lib/supabase';
 import CashbookSheet from '../components/CashbookSheet';
 import EmptyState from '../components/EmptyState';
+import TableSkeleton from '../components/TableSkeleton';
 import { exportToCSV } from '../utils/exportHelper';
 import { useCompany } from '../context/CompanyContext';
+import { toast } from '../utils/toast';
 
 const Cashbook = () => {
   const { activeCompany, loading: companyLoading } = useCompany();
@@ -98,15 +100,19 @@ const Cashbook = () => {
         dateRange: 'Full History'
       };
       exportToCSV(headers, rows, config);
+      toast.success("Cashbook exported to CSV successfully.");
     } catch (err) {
-      alert("Export Failed.");
+      toast.error("Export Failed. Please try again.");
     } finally {
       setExporting(false);
     }
   };
 
   const handleSaveSheet = async (data: any) => {
-    if (!data.date) return alert("Please provide a date.");
+    if (!data.date) {
+      toast.warning("Please provide a date for the statement.");
+      return;
+    }
     setLoading(true);
     const cid = activeCompany?.id;
     if (!cid) return;
@@ -127,9 +133,10 @@ const Cashbook = () => {
       } else {
         await supabase.from('cashbooks').insert([{ ...payload, created_at: new Date().toISOString() }]);
       }
+      toast.success("Cashbook statement saved successfully.");
       await loadData();
     } catch (e: any) {
-      alert("Save Failed.");
+      toast.error("Failed to save statement. Please try again.");
     } finally { 
       setLoading(false);
       setViewState('list'); 
@@ -142,7 +149,10 @@ const Cashbook = () => {
       setLoading(true);
       try {
         await supabase.from('cashbooks').update({ is_deleted: true }).eq('id', id);
+        toast.success("Statement deleted successfully.");
         await loadData();
+      } catch (err: any) {
+        toast.error("Failed to delete statement: " + (err.message || 'Unknown error'));
       } finally {
         setLoading(false);
       }
@@ -195,22 +205,26 @@ const Cashbook = () => {
 
         <div className="flex flex-wrap gap-2 justify-end w-full sm:w-auto">
           <button 
+            type="button"
             onClick={handleExportCSV}
             disabled={exporting || entries.length === 0}
-            className="px-4 py-2.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-xs hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-all font-semibold flex items-center disabled:opacity-50 text-slate-700 dark:text-slate-300 shadow-xs cursor-pointer"
+            className="px-4 py-2 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded text-xs hover:bg-slate-50 dark:hover:bg-slate-700/50 active:scale-[0.98] transition-all duration-150 font-medium flex items-center gap-1.5 disabled:opacity-50 text-slate-700 dark:text-slate-300 shadow-xs cursor-pointer"
           >
-            {exporting ? <Loader2 className="w-3.5 h-3.5 animate-spin mr-2" /> : <FileDown className="w-3.5 h-3.5 mr-2" />} Export CSV
+            {exporting ? <Loader2 className="w-3.5 h-3.5 animate-spin mr-1.5" /> : <FileDown className="w-3.5 h-3.5 mr-1.5" />} <span>Export CSV</span>
           </button>
           <button 
+            type="button"
             onClick={() => { setEditingEntry(null); setViewState('entry'); }} 
-            className="bg-primary text-white px-5 py-2.5 rounded-md font-medium text-sm hover:bg-primary-dark flex items-center shadow-sm cursor-pointer"
+            className="bg-primary text-white px-4 py-2 rounded font-medium text-xs hover:bg-primary-dark active:scale-[0.98] flex items-center justify-center gap-1.5 shadow-sm transition-all duration-150 cursor-pointer"
           >
-            <Plus className="w-4 h-4 mr-2" /> Create Statement
+            <Plus className="w-3.5 h-3.5" /> <span>Create Statement</span>
           </button>
         </div>
       </div>
 
-      {!loading && entries.length === 0 ? (
+      {loading ? (
+        <TableSkeleton rows={6} columns={6} />
+      ) : entries.length === 0 ? (
         <EmptyState 
           title="No Records" 
           message="No cashbook records found." 
@@ -259,9 +273,7 @@ const Cashbook = () => {
                     </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-                    {loading ? (
-                        <tr><td colSpan={6} className="text-center py-20 text-slate-400 dark:text-slate-500 text-xs uppercase font-bold">Loading...</td></tr>
-                    ) : filteredEntries.map((e, i) => (
+                    {filteredEntries.map((e, i) => (
                         <tr key={e.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors">
                         <td className="py-3 px-6 text-center border-r border-slate-100 dark:border-slate-800 font-mono text-slate-400 dark:text-slate-500">{i + 1}</td>
                         <td className="py-3 px-6 border-r border-slate-100 dark:border-slate-800">

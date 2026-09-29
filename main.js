@@ -24,9 +24,14 @@ if (!gotTheLock) {
   const isDev = !app.isPackaged && (process.env.NODE_ENV === 'development' || process.argv.includes('--dev'));
 
   function createMainWindow() {
-    const preloadPath = fs.existsSync(path.join(__dirname, 'preload.cjs'))
-      ? path.join(__dirname, 'preload.cjs')
-      : path.join(__dirname, 'preload.js');
+    const appDir = app.getAppPath();
+    const preloadCandidates = [
+      path.join(appDir, 'preload.cjs'),
+      path.join(__dirname, 'preload.cjs'),
+      path.join(appDir, 'preload.js'),
+      path.join(__dirname, 'preload.js')
+    ];
+    const preloadPath = preloadCandidates.find(p => fs.existsSync(p));
 
     mainWindow = new BrowserWindow({
       width: 1366,
@@ -38,7 +43,7 @@ if (!gotTheLock) {
       show: false,
       autoHideMenuBar: true,
       webPreferences: {
-        preload: preloadPath,
+        ...(preloadPath ? { preload: preloadPath } : {}),
         contextIsolation: true,
         nodeIntegration: false,
         sandbox: false,
@@ -57,6 +62,29 @@ if (!gotTheLock) {
     mainWindow.once('ready-to-show', () => {
       mainWindow.show();
       mainWindow.focus();
+    });
+
+    // Safety fallback: ensure window is visible even if ready-to-show event is missed
+    setTimeout(() => {
+      if (mainWindow && !mainWindow.isVisible()) {
+        mainWindow.show();
+      }
+    }, 2500);
+
+    // Allow F12 or Ctrl+Shift+I to toggle DevTools for diagnosis
+    mainWindow.webContents.on('before-input-event', (event, input) => {
+      if (input.key === 'F12' || ((input.control || input.meta) && input.shift && input.key.toLowerCase() === 'i')) {
+        mainWindow.webContents.toggleDevTools();
+      }
+    });
+
+    // Diagnostic logging for render process issues
+    mainWindow.webContents.on('did-fail-load', (event, errorCode, errorDescription, validatedURL) => {
+      console.error(`[Electron] Failed to load (${errorCode}): ${errorDescription} URL: ${validatedURL}`);
+    });
+
+    mainWindow.webContents.on('render-process-gone', (event, details) => {
+      console.error('[Electron] Render process gone:', details);
     });
 
     // Intercept external links and open in default web browser
@@ -79,21 +107,31 @@ if (!gotTheLock) {
     });
 
     const devServerUrl = process.env.ELECTRON_START_URL || 'http://localhost:3000';
-    const distIndexPath = path.join(__dirname, 'dist', 'index.html');
+    const candidatePaths = [
+      path.join(appDir, 'dist', 'index.html'),
+      path.join(__dirname, 'dist', 'index.html'),
+      path.join(process.cwd(), 'dist', 'index.html')
+    ];
+    const distIndexPath = candidatePaths.find(p => fs.existsSync(p));
 
     if (isDev) {
       mainWindow.loadURL(devServerUrl).catch(() => {
         console.log('[Electron] Dev server unreachable, falling back to dist/index.html');
-        if (fs.existsSync(distIndexPath)) {
-          mainWindow.loadFile(distIndexPath);
+        if (distIndexPath) {
+          mainWindow.loadFile(distIndexPath).catch((err) => {
+            console.error('[Electron] Failed to load local file in dev fallback:', err);
+          });
         }
       });
     } else {
-      if (fs.existsSync(distIndexPath)) {
-        mainWindow.loadFile(distIndexPath);
+      if (distIndexPath) {
+        mainWindow.loadFile(distIndexPath).catch((err) => {
+          console.error('[Electron] Failed to load dist/index.html:', err);
+        });
       } else {
+        console.warn('[Electron] dist/index.html not found in candidate paths:', candidatePaths);
         mainWindow.loadURL(devServerUrl).catch((err) => {
-          console.error('[Electron] Failed to load URL/file:', err);
+          console.error('[Electron] Failed to load devServerUrl fallback:', err);
         });
       }
     }

@@ -35,7 +35,7 @@ const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
         <div className="flex w-full space-x-3">
           <button
             onClick={onClose}
-            className="flex-1 px-4 py-2.5 bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 font-bold uppercase text-[10px] tracking-widest rounded hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors"
+            className="flex-1 px-4 py-2 bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 font-medium text-xs rounded hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors cursor-pointer"
           >
             {cancelLabel}
           </button>
@@ -44,7 +44,7 @@ const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
               onConfirm();
               onClose();
             }}
-            className={`flex-1 px-4 py-2.5 text-white font-bold uppercase text-[10px] tracking-widest rounded transition-all active:scale-95 ${
+            className={`flex-1 px-4 py-2 text-white font-medium text-xs rounded transition-all cursor-pointer ${
               variant === 'danger' ? 'bg-red-600 hover:bg-red-700' : 'bg-amber-500 hover:bg-amber-600'
             }`}
           >

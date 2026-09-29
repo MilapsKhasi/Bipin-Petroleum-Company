@@ -128,13 +128,15 @@ const Dashboard = () => {
   }).slice(0, 10);
 
   const StatBox = ({ label, value, subLabel, icon: Icon }: any) => (
-    <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-4 rounded hover:border-slate-300 dark:hover:border-slate-700">
+    <div className="bg-white dark:bg-slate-900 border border-slate-200/90 dark:border-slate-800 p-4 rounded-lg shadow-xs hover:border-slate-300 dark:hover:border-slate-700 hover:shadow-sm transition-all duration-150">
       <div className="flex items-center justify-between mb-2">
         <span className="text-[11px] font-medium text-slate-500 dark:text-slate-400 capitalize tracking-tight">{label}</span>
-        <Icon className="w-3.5 h-3.5 text-slate-300 dark:text-slate-600" />
+        <div className="w-7 h-7 rounded-md bg-slate-100 dark:bg-slate-800 flex items-center justify-center text-slate-400 dark:text-slate-500">
+          <Icon className="w-3.5 h-3.5" />
+        </div>
       </div>
-      <div className="text-xl font-medium text-slate-900 dark:text-white leading-none mb-1">{value}</div>
-      {subLabel && <div className="text-[10px] text-slate-400 dark:text-slate-500 font-medium capitalize">{subLabel}</div>}
+      <div className="text-xl font-bold font-mono tabular-nums text-slate-900 dark:text-white leading-none mb-1.5">{value}</div>
+      {subLabel && <div className="text-[10px] text-slate-400 dark:text-slate-500 font-medium capitalize truncate">{subLabel}</div>}
     </div>
   );
 
@@ -221,21 +223,37 @@ const Dashboard = () => {
             </thead>
             <tbody>
               {loading ? (
-                <tr><td colSpan={6} className="text-center py-20 text-slate-400 capitalize text-[10px] font-medium tracking-widest">Refreshing Data...</td></tr>
+                Array.from({ length: 5 }).map((_, idx) => (
+                  <tr key={`skel-${idx}`} className="animate-pulse">
+                    <td className="py-3 px-4"><div className="h-3 bg-slate-200 dark:bg-slate-700/60 rounded w-20" /></td>
+                    <td className="py-3 px-4"><div className="h-3 bg-slate-200 dark:bg-slate-700/60 rounded w-14" /></td>
+                    <td className="py-3 px-4"><div className="h-3 bg-slate-200 dark:bg-slate-700/60 rounded w-24" /></td>
+                    <td className="py-3 px-4"><div className="h-3 bg-slate-200 dark:bg-slate-700/60 rounded w-36" /></td>
+                    <td className="py-3 px-4 text-right"><div className="h-3 bg-slate-200 dark:bg-slate-700/60 rounded w-20 ml-auto" /></td>
+                    <td className="py-3 px-4 text-center"><div className="h-4 bg-slate-200 dark:bg-slate-700/60 rounded w-12 mx-auto" /></td>
+                  </tr>
+                ))
               ) : filteredVouchers.map((v) => (
-                <tr key={v.id}>
-                  <td className="text-slate-500 dark:text-slate-400">{formatDate(v.date)}</td>
-                  <td className={`text-[10px] font-medium capitalize ${v.type === 'Sale' ? 'text-blue-600 dark:text-blue-400' : 'text-rose-600 dark:text-rose-400'}`}>{v.type}</td>
-                  <td className="font-mono font-medium text-slate-900 dark:text-slate-100">{v.bill_number}</td>
+                <tr key={v.id} className="hover:bg-slate-50/80 dark:hover:bg-slate-800/60 transition-colors duration-150 cursor-default">
+                  <td className="text-slate-500 dark:text-slate-400 font-mono tabular-nums">{formatDate(v.date)}</td>
+                  <td className={`text-[11px] font-medium capitalize ${v.type === 'Sale' ? 'text-blue-600 dark:text-blue-400' : 'text-rose-600 dark:text-rose-400'}`}>{v.type}</td>
+                  <td className="font-mono tabular-nums font-semibold text-slate-900 dark:text-slate-100">{v.bill_number}</td>
                   <td className="capitalize font-medium text-slate-700 dark:text-slate-300">{v.vendor_name || v.customer_name}</td>
-                  <td className="text-right font-mono font-medium text-slate-900 dark:text-slate-100">{formatCurrency(v.grand_total, false)}</td>
+                  <td className="text-right font-mono tabular-nums font-bold text-slate-900 dark:text-slate-100">{formatCurrency(v.grand_total, false)}</td>
                   <td className="text-center">
-                    <span className={`text-[9px] px-2 py-0.5 rounded-sm font-medium capitalize ${v.status === 'Paid' ? 'bg-green-50 dark:bg-green-900/20 text-green-600 dark:text-green-400' : 'bg-amber-50 dark:bg-amber-900/20 text-amber-600 dark:text-amber-400'}`}>{v.status}</span>
+                    <span className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-medium border ${v.status === 'Paid' ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-400 border-emerald-200/60 dark:border-emerald-800/60' : 'bg-amber-50 text-amber-700 dark:bg-amber-950/40 dark:text-amber-400 border-amber-200/60 dark:border-amber-800/60'}`}>{v.status}</span>
                   </td>
                 </tr>
               ))}
               {!loading && filteredVouchers.length === 0 && (
-                <tr><td colSpan={6} className="py-20 text-center text-slate-300 italic">No transactions found for the selected period.</td></tr>
+                <tr>
+                  <td colSpan={6} className="py-16 text-center text-slate-400 dark:text-slate-500 italic">
+                    <div className="flex flex-col items-center justify-center space-y-2">
+                      <Search className="w-6 h-6 text-slate-300 dark:text-slate-600" />
+                      <p className="text-xs">No transactions found for the selected period.</p>
+                    </div>
+                  </td>
+                </tr>
               )}
             </tbody>
           </table>

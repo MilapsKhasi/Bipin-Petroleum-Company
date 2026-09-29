@@ -102,13 +102,20 @@ export const safeSupabaseSave = async (table: string, payload: any, id?: string)
 
   let cleanPayload: any = { ...payload };
   
-  // Convert empty strings to null & ensure code/name fields (GSTIN, HSN, Name, Vendor/Customer/Item Name) are UPPERCASE
+  // Convert empty strings to null & ensure code/name fields are appropriately capitalized
   Object.keys(cleanPayload).forEach(key => {
     if (cleanPayload[key] === '') {
       cleanPayload[key] = null;
     } else if (
+      table !== 'companies' &&
       typeof cleanPayload[key] === 'string' &&
       ['gstin', 'hsn', 'hsn_sac', 'sac', 'pan', 'ifsc', 'sku', 'name', 'customer_name', 'vendor_name', 'item_name', 'party_name', 'company_name', 'account_name'].includes(key.toLowerCase())
+    ) {
+      cleanPayload[key] = cleanPayload[key].toUpperCase();
+    } else if (
+      table === 'companies' &&
+      typeof cleanPayload[key] === 'string' &&
+      ['gstin', 'pan', 'ifsc', 'ifsc_code'].includes(key.toLowerCase())
     ) {
       cleanPayload[key] = cleanPayload[key].toUpperCase();
     }

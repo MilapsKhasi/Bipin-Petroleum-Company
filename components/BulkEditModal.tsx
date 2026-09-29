@@ -2,6 +2,8 @@
 import React, { useState, useEffect } from 'react';
 import { X, Undo, Redo, Share2, RotateCcw, Save, Trash2, AlertTriangle, Loader2 } from 'lucide-react';
 import Modal from './Modal';
+import FormActionButtons from './FormActionButtons';
+import { toast } from '../utils/toast';
 
 export interface ColumnDef {
   header: string;
@@ -99,7 +101,7 @@ const BulkEditModal: React.FC<BulkEditModalProps> = ({ isOpen, onClose, title, c
   const handleShare = () => {
       const textData = gridData.map(row => Object.values(row).join('\t')).join('\n');
       navigator.clipboard.writeText(textData);
-      alert('Table data copied to clipboard!');
+      toast.success('Table data copied to clipboard.');
   };
 
   const handleSave = async () => {
@@ -253,15 +255,28 @@ const BulkEditModal: React.FC<BulkEditModalProps> = ({ isOpen, onClose, title, c
         </div>
 
         {/* Footer */}
-        <div className="pt-4 mt-2 flex justify-end">
-            <button 
-                onClick={handleSave}
-                disabled={saving}
-                className="flex items-center px-6 py-2 bg-primary text-white font-bold rounded-md hover:bg-yellow-400 transition-colors shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-                {saving ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Save className="w-4 h-4 mr-2" />}
-                Update Entries
-            </button>
+        <div className="pt-4 mt-2">
+            <FormActionButtons
+                primaryText="Update Entries"
+                primaryType="button"
+                primaryOnClick={handleSave}
+                primaryDisabled={saving}
+                primaryLoading={saving}
+
+                secondaryLeftText="Reset to Initial"
+                secondaryLeftType="button"
+                secondaryLeftOnClick={handleReset}
+                secondaryLeftDisabled={saving}
+
+                secondaryRightText="Copy Table Data"
+                secondaryRightType="button"
+                secondaryRightOnClick={handleShare}
+                secondaryRightDisabled={saving}
+
+                discardText="Discard"
+                discardOnClick={onClose}
+                discardDisabled={saving}
+            />
         </div>
       </div>
     </Modal>

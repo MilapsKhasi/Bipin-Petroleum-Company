@@ -9,6 +9,8 @@ import DateFilter, { DateFilterHandle } from '../components/DateFilter';
 import EmptyState from '../components/EmptyState';
 import { supabase } from '../lib/supabase';
 import { InvoicePrintModal } from '../components/InvoicePrintModal';
+import TableSkeleton from '../components/TableSkeleton';
+import { toast } from '../utils/toast';
 
 export const DeliveryChallans = () => {
   const location = useLocation();
@@ -134,6 +136,7 @@ export const DeliveryChallans = () => {
 
     loadData();
     window.dispatchEvent(new Event('appSettingsChanged'));
+    toast.success(`Challan #${item.challan_number || item.bill_number || ''} deleted`);
     setDeleteDialog({ isOpen: false, challan: null });
   };
 
@@ -196,13 +199,13 @@ export const DeliveryChallans = () => {
             setEditingChallan(null);
             setIsModalOpen(true);
           }}
-          className="w-full sm:w-auto bg-primary text-white px-5 py-2.5 rounded-md font-medium text-sm hover:bg-primary-dark flex items-center justify-center shadow-sm cursor-pointer"
+          className="w-full sm:w-auto bg-primary text-white px-4 py-2 rounded font-medium text-xs hover:bg-primary-dark active:scale-[0.98] flex items-center justify-center gap-1.5 shadow-sm transition-all duration-150 cursor-pointer"
         >
-          <Plus className="w-4 h-4 mr-2" /> New Delivery Challan
+          <Plus className="w-3.5 h-3.5" /> <span>New Delivery Challan</span>
         </button>
       </div>
 
-      <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden p-4 sm:p-6 space-y-4">
+      <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200/90 dark:border-slate-800 shadow-sm overflow-hidden p-4 sm:p-6 space-y-4">
         <div className="flex flex-col md:flex-row gap-4 items-center justify-between">
           <div className="relative w-full md:max-w-xs shrink-0">
             <Search className="absolute left-3 top-2.5 w-4 h-4 text-slate-400" />
@@ -219,31 +222,29 @@ export const DeliveryChallans = () => {
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-1">
-          <div className="bg-slate-50 dark:bg-slate-800/40 border border-slate-100 dark:border-slate-800 rounded-xl p-4 flex items-center justify-between">
+          <div className="bg-slate-50/70 dark:bg-slate-800/40 border border-slate-200/60 dark:border-slate-800 rounded-xl p-4 flex items-center justify-between shadow-xs hover:border-slate-300 dark:hover:border-slate-700 transition-colors">
             <div>
               <p className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest block">Total Challans</p>
-              <p className="text-xl font-bold font-mono text-slate-900 dark:text-white mt-1">{filtered.length}</p>
+              <p className="text-xl font-bold font-mono tabular-nums text-slate-900 dark:text-white mt-1">{filtered.length}</p>
             </div>
-            <div className="w-9 h-9 rounded-lg bg-emerald-100/80 dark:bg-emerald-950/40 flex items-center justify-center text-emerald-600 dark:text-emerald-400">
+            <div className="w-9 h-9 rounded-lg bg-emerald-100/80 dark:bg-emerald-950/40 flex items-center justify-center text-emerald-600 dark:text-emerald-400 shadow-2xs">
               <Truck className="w-4 h-4" />
             </div>
           </div>
 
-          <div className="bg-slate-50 dark:bg-slate-800/40 border border-slate-100 dark:border-slate-800 rounded-xl p-4 flex items-center justify-between">
+          <div className="bg-slate-50/70 dark:bg-slate-800/40 border border-slate-200/60 dark:border-slate-800 rounded-xl p-4 flex items-center justify-between shadow-xs hover:border-slate-300 dark:hover:border-slate-700 transition-colors">
             <div>
               <p className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest block">Dispatched Goods Value</p>
-              <p className="text-xl font-bold font-mono text-emerald-600 dark:text-emerald-400 mt-1">{formatCurrency(totalDispatchedValue)}</p>
+              <p className="text-xl font-bold font-mono tabular-nums text-emerald-600 dark:text-emerald-400 mt-1">{formatCurrency(totalDispatchedValue)}</p>
             </div>
-            <div className="w-9 h-9 rounded-lg bg-emerald-100/80 dark:bg-emerald-950/40 flex items-center justify-center text-emerald-600 dark:text-emerald-400">
+            <div className="w-9 h-9 rounded-lg bg-emerald-100/80 dark:bg-emerald-950/40 flex items-center justify-center text-emerald-600 dark:text-emerald-400 shadow-2xs">
               <Truck className="w-4 h-4" />
             </div>
           </div>
         </div>
 
         {loading ? (
-          <div className="h-64 flex items-center justify-center">
-            <Loader2 className="w-8 h-8 animate-spin text-primary" />
-          </div>
+          <TableSkeleton rows={6} columns={8} />
         ) : filtered.length === 0 ? (
           <EmptyState
             title="No Delivery Challans"
@@ -276,23 +277,23 @@ export const DeliveryChallans = () => {
                   return (
                     <tr
                       key={c.id}
-                      className="hover:bg-slate-50/50 dark:hover:bg-slate-800/30 transition-all cursor-pointer"
+                      className="hover:bg-slate-50/90 dark:hover:bg-slate-800/60 transition-colors duration-150 cursor-pointer"
                     >
-                      <td className="py-3 px-4 text-center text-slate-400 font-mono">{i + 1}</td>
-                      <td className="py-3 px-4 font-mono">{formatDate(c.date)}</td>
-                      <td className="py-3 px-4 font-mono font-semibold text-emerald-600 dark:text-emerald-400">
+                      <td className="py-3 px-4 text-center text-slate-400 font-mono tabular-nums">{i + 1}</td>
+                      <td className="py-3 px-4 font-mono tabular-nums">{formatDate(c.date)}</td>
+                      <td className="py-3 px-4 font-mono tabular-nums font-semibold text-emerald-600 dark:text-emerald-400">
                         {c.invoice_number || c.bill_number}
                       </td>
                       <td className="py-3 px-4 font-medium text-slate-900 dark:text-white capitalize">
                         {c.customer_name || c.vendor_name}
                       </td>
-                      <td className="py-3 px-4 font-mono text-[11px] text-slate-600 dark:text-slate-400">
+                      <td className="py-3 px-4 font-mono tabular-nums text-[11px] text-slate-600 dark:text-slate-400">
                         {veh}
                       </td>
-                      <td className="py-3 px-4 text-right font-mono text-slate-600 dark:text-slate-400">
+                      <td className="py-3 px-4 text-right font-mono tabular-nums text-slate-600 dark:text-slate-400">
                         {formatCurrency(c.total_without_gst)}
                       </td>
-                      <td className="py-3 px-4 text-right font-mono font-bold text-slate-900 dark:text-white">
+                      <td className="py-3 px-4 text-right font-mono tabular-nums font-bold text-slate-900 dark:text-white">
                         {formatCurrency(c.grand_total)}
                       </td>
                       <td className="py-3 px-4 text-center">

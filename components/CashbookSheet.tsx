@@ -3,6 +3,7 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { ChevronDown, Loader2, Save, ArrowLeft, Trash2, FileSpreadsheet, FileText, Calendar, RotateCcw, RotateCw } from 'lucide-react';
 import { exportCashbookEntryToExcel, exportCashbookEntryToPDF } from '../utils/exportHelper';
 import { formatDate, parseDateFromInput, formatCurrency } from '../utils/helpers';
+import FormActionButtons from './FormActionButtons';
 
 interface CashbookRow {
   id: string;
@@ -271,18 +272,18 @@ const CashbookSheet: React.FC<CashbookSheetProps> = ({ initialData, existingEntr
           </div>
         </div>
         <div className="flex items-center space-x-2 w-full sm:w-auto justify-end">
-          <button onClick={handleExportPDF} className="flex items-center px-3 sm:px-4 py-2 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded text-slate-600 dark:text-slate-300 font-bold text-[11px] hover:bg-slate-50 transition-all uppercase">
-            <FileText className="w-4 h-4 sm:mr-2 text-rose-500" /> <span className="hidden sm:inline">PDF</span>
+          <button onClick={handleExportPDF} className="flex items-center gap-1.5 px-4 py-2 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded text-slate-600 dark:text-slate-300 font-medium text-xs hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-none uppercase cursor-pointer">
+            <FileText className="w-3.5 h-3.5 text-rose-500" /> <span className="hidden sm:inline">PDF</span>
           </button>
-          <button onClick={handleExportXLSX} className="flex items-center px-3 sm:px-4 py-2 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded text-slate-600 dark:text-slate-300 font-bold text-[11px] hover:bg-slate-50 transition-all uppercase">
-            <FileSpreadsheet className="w-4 h-4 sm:mr-2 text-emerald-500" /> <span className="hidden sm:inline">Excel</span>
+          <button onClick={handleExportXLSX} className="flex items-center gap-1.5 px-4 py-2 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded text-slate-600 dark:text-slate-300 font-medium text-xs hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-none uppercase cursor-pointer">
+            <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-500" /> <span className="hidden sm:inline">Excel</span>
           </button>
           <button 
             onClick={executeSave}
             disabled={loading}
-            className="bg-primary text-white px-4 sm:px-8 py-2 sm:py-1.5 rounded font-bold text-[12px] hover:bg-primary-dark transition-all flex items-center ml-2 uppercase shadow-sm whitespace-nowrap disabled:opacity-50 disabled:cursor-not-allowed"
+            className="bg-primary text-white px-4 py-2 rounded font-medium text-xs hover:bg-primary-dark transition-none flex items-center gap-1.5 ml-2 uppercase shadow-sm whitespace-nowrap disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
           >
-            {loading ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Save className="w-4 h-4 sm:mr-2" />}
+            {loading ? <Loader2 className="w-3.5 h-3.5 animate-spin mr-1.5" /> : <Save className="w-3.5 h-3.5" />}
             <span className="hidden sm:inline">{initialData ? 'Update Entry' : 'Save Statement'}</span>
             <span className="sm:hidden">{initialData ? 'Update' : 'Save'}</span>
           </button>
@@ -403,6 +404,31 @@ const CashbookSheet: React.FC<CashbookSheetProps> = ({ initialData, existingEntr
               <span className="max-w-[150px] sm:max-w-none">CLOSING BALANCE FOR DATE {displayDate}</span>
               <span className="font-mono text-link">{formatCurrency(closingBalance)}</span>
             </div>
+          </div>
+
+          {/* Form Action Buttons */}
+          <div className="p-4 bg-white dark:bg-slate-900 border-t border-slate-200 dark:border-slate-800">
+            <FormActionButtons
+              primaryText={initialData ? 'Update Entry' : 'Save Statement'}
+              primaryType="button"
+              primaryOnClick={executeSave}
+              primaryDisabled={loading}
+              primaryLoading={loading}
+
+              secondaryLeftText="Export Excel"
+              secondaryLeftType="button"
+              secondaryLeftOnClick={handleExportXLSX}
+              secondaryLeftDisabled={loading}
+
+              secondaryRightText="Export PDF"
+              secondaryRightType="button"
+              secondaryRightOnClick={handleExportPDF}
+              secondaryRightDisabled={loading}
+
+              discardText="Discard"
+              discardOnClick={onCancel}
+              discardDisabled={loading}
+            />
           </div>
         </div>
       </div>

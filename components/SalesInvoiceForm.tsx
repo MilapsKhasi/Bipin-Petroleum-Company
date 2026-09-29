@@ -9,6 +9,9 @@ import ItemSelectDropdown from './ItemSelectDropdown';
 import PaymentModal from './PaymentModal';
 import { recordActivity } from '../utils/activityTracker';
 import { InvoicePrintModal } from './InvoicePrintModal';
+import FormActionButtons from './FormActionButtons';
+import { useKeyboardShortcuts } from '../utils/shortcutManager';
+import { toast } from '../utils/toast';
 
 interface SalesInvoiceFormProps {
   initialData?: any;
@@ -72,6 +75,35 @@ const SalesInvoiceForm: React.FC<SalesInvoiceFormProps> = ({ initialData, onSubm
 
   const formRef = useRef<HTMLFormElement>(null);
 
+  // Global Shortcut listener for Ctrl+S, Ctrl+P, Ctrl+Shift+S
+  useKeyboardShortcuts({
+    onSave: () => {
+      shouldPrintRef.current = false;
+      setIsSaveAndNew(false);
+      if (formRef.current) {
+        if (typeof formRef.current.requestSubmit === 'function') formRef.current.requestSubmit();
+        else formRef.current.dispatchEvent(new Event('submit', { cancelable: true, bubbles: true }));
+      }
+    },
+    onSaveAndNew: () => {
+      shouldPrintRef.current = false;
+      setIsSaveAndNew(true);
+      if (formRef.current) {
+        if (typeof formRef.current.requestSubmit === 'function') formRef.current.requestSubmit();
+        else formRef.current.dispatchEvent(new Event('submit', { cancelable: true, bubbles: true }));
+      }
+    },
+    onPrint: () => {
+      shouldPrintRef.current = true;
+      setIsSaveAndNew(false);
+      if (formRef.current) {
+        if (typeof formRef.current.requestSubmit === 'function') formRef.current.requestSubmit();
+        else formRef.current.dispatchEvent(new Event('submit', { cancelable: true, bubbles: true }));
+      }
+    },
+    priority: 30
+  }, [formData]);
+
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') {
@@ -81,18 +113,6 @@ const SalesInvoiceForm: React.FC<SalesInvoiceFormProps> = ({ initialData, onSubm
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'y') {
         e.preventDefault();
         redo();
-      }
-      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') {
-        e.preventDefault();
-        if (formRef.current) {
-          if (typeof formRef.current.requestSubmit === 'function') {
-            formRef.current.requestSubmit();
-          } else {
-            const btn = formRef.current.querySelector('button[type="submit"]') as HTMLButtonElement | null;
-            if (btn) btn.click();
-            else formRef.current.dispatchEvent(new Event('submit', { cancelable: true, bubbles: true }));
-          }
-        }
       }
     };
     window.addEventListener('keydown', handleKeyDown);
@@ -386,8 +406,9 @@ const SalesInvoiceForm: React.FC<SalesInvoiceFormProps> = ({ initialData, onSubm
       }
 
       setItemModal({ isOpen: false, rowIdx: null });
+      toast.success("Stock item created successfully.");
     } catch (err: any) {
-      alert("Error creating stock item: " + err.message);
+      toast.error("Error creating stock item: " + (err.message || 'Unknown error'));
     }
   };
 
@@ -407,7 +428,10 @@ const SalesInvoiceForm: React.FC<SalesInvoiceFormProps> = ({ initialData, onSubm
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (loading) return;
-    if (!formData.customer_name || !formData.invoice_number) return alert("Required: Customer Name and Invoice No");
+    if (!formData.customer_name || !formData.invoice_number) {
+      toast.warning("Required: Customer Name and Invoice No");
+      return;
+    }
     setLoading(true);
     try {
       const user = await getAuthUser();
@@ -438,6 +462,7 @@ const SalesInvoiceForm: React.FC<SalesInvoiceFormProps> = ({ initialData, onSubm
       if (payload.status === 'Paid' && savedRes.data) await syncTransactionToCashbook(savedRes.data[0]);
       window.dispatchEvent(new Event('appSettingsChanged'));
       const finalInv = (savedRes.data && savedRes.data[0]) ? savedRes.data[0] : { ...payload, bill_number: payload.invoice_number };
+      toast.success(initialData ? "Invoice updated successfully." : "Invoice saved successfully.");
       onSubmit(finalInv, shouldPrintRef.current, isSaveAndNew);
       if (isSaveAndNew) {
         setFormData(getInitialState());
@@ -445,7 +470,11 @@ const SalesInvoiceForm: React.FC<SalesInvoiceFormProps> = ({ initialData, onSubm
         manualOverrides.current = new Set();
         loadDependencies();
       }
-    } catch (err: any) { alert("Error: " + err.message); } finally { setLoading(false); }
+    } catch (err: any) { 
+      toast.error("Error: " + (err.message || 'Unknown error')); 
+    } finally { 
+      setLoading(false); 
+    }
   };
 
   return (
@@ -643,21 +672,28 @@ const SalesInvoiceForm: React.FC<SalesInvoiceFormProps> = ({ initialData, onSubm
             </div>
         </div>
 
-        <div className="flex items-center justify-end space-x-4">
-            <button type="button" onClick={() => setShowPrintModal(true)} disabled={loading} className="border border-slate-300 dark:border-slate-700 text-slate-700 dark:text-slate-300 px-5 py-3 rounded font-bold text-[14px] hover:bg-slate-50 dark:hover:bg-slate-800 flex items-center shadow-sm active:scale-95 transition-all disabled:opacity-50 disabled:cursor-not-allowed">
-                <Printer className="w-4 h-4 mr-2 text-red-600" /> Print Preview
-            </button>
-            <button type="button" onClick={onCancel} disabled={loading} className="text-[14px] text-slate-400 hover:text-slate-800 dark:hover:text-slate-200 font-medium capitalize px-2 disabled:opacity-50 disabled:cursor-not-allowed">Discard</button>
-            <button type="submit" onClick={() => { shouldPrintRef.current = false; setIsSaveAndNew(true); }} disabled={loading} className="bg-emerald-600 text-white px-6 py-3 rounded font-bold text-[14px] hover:bg-emerald-700 shadow active:scale-95 flex items-center capitalize transition-all disabled:opacity-50 disabled:cursor-not-allowed">
-                {loading && isSaveAndNew && <Loader2 className="w-4 h-4 animate-spin mr-2" />}Save & New
-            </button>
-            <button type="submit" onClick={() => { shouldPrintRef.current = false; setIsSaveAndNew(false); }} disabled={loading} className="bg-slate-800 dark:bg-slate-700 text-white px-6 py-3 rounded font-bold text-[14px] hover:bg-slate-900 shadow active:scale-95 flex items-center capitalize transition-all disabled:opacity-50 disabled:cursor-not-allowed">
-                {loading && !shouldPrintRef.current && !isSaveAndNew && <Loader2 className="w-4 h-4 animate-spin mr-2" />}{initialData ? 'Update' : 'Save'}
-            </button>
-            <button type="submit" onClick={() => { shouldPrintRef.current = true; setIsSaveAndNew(false); }} disabled={loading} className="bg-primary text-white px-8 py-3 rounded font-bold text-[14px] hover:bg-primary-dark shadow-lg active:scale-95 flex items-center capitalize transition-all disabled:opacity-50 disabled:cursor-not-allowed">
-                {loading && shouldPrintRef.current && <Loader2 className="w-4 h-4 animate-spin mr-2" />}<Printer className="w-4 h-4 mr-2 inline" />{initialData ? 'Update & Print' : 'Save & Print'}
-            </button>
-        </div>
+        <FormActionButtons
+          primaryText={initialData ? 'Update & Print' : 'Save & Print'}
+          primaryType="submit"
+          primaryOnClick={() => { shouldPrintRef.current = true; setIsSaveAndNew(false); }}
+          primaryDisabled={loading}
+          primaryLoading={loading && shouldPrintRef.current}
+
+          secondaryLeftText="Save & New"
+          secondaryLeftType="submit"
+          secondaryLeftOnClick={() => { shouldPrintRef.current = false; setIsSaveAndNew(true); }}
+          secondaryLeftDisabled={loading}
+          secondaryLeftLoading={loading && isSaveAndNew}
+
+          secondaryRightText="Print Preview"
+          secondaryRightType="button"
+          secondaryRightOnClick={() => setShowPrintModal(true)}
+          secondaryRightDisabled={loading}
+
+          discardText="Discard"
+          discardOnClick={onCancel}
+          discardDisabled={loading}
+        />
       </form>
 
       <InvoicePrintModal 

@@ -209,14 +209,14 @@ const DateFilter = forwardRef<DateFilterHandle, DateFilterProps>(({ onFilterChan
             setIsYearOpen(!isYearOpen);
             setIsMonthOpen(false);
           }}
-          className="appearance-none bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-md py-2 pl-3 pr-7 text-xs font-normal text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700 cursor-pointer outline-none min-w-[110px] focus:border-primary focus:ring-1 focus:ring-primary flex items-center justify-between"
+          className="appearance-none bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded px-4 py-2 text-xs font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700 cursor-pointer outline-none min-w-[110px] focus:border-primary focus:ring-1 focus:ring-primary flex items-center justify-between gap-1.5 shadow-xs transition-all duration-150 active:scale-[0.98]"
         >
           <span className="truncate">{getYearLabel()}</span>
           <ChevronDown className="w-3 h-3 text-slate-400 dark:text-slate-500 shrink-0 ml-1" />
         </button>
 
         {isYearOpen && (
-          <div className="absolute top-full left-0 mt-1 z-[600] w-48 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-md shadow-lg p-2 text-xs space-y-1">
+          <div className="absolute top-full left-0 mt-1 z-[600] w-48 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-md shadow-lg p-2 text-xs space-y-1 animate-in fade-in zoom-in-95 duration-150">
             <div className="flex items-center justify-between px-1 pb-1 border-b border-slate-100 dark:border-slate-700 text-[11px] text-slate-400 font-medium">
               <span>Select Years</span>
               <div className="space-x-1.5">
@@ -261,14 +261,14 @@ const DateFilter = forwardRef<DateFilterHandle, DateFilterProps>(({ onFilterChan
             setIsMonthOpen(!isMonthOpen);
             setIsYearOpen(false);
           }}
-          className="appearance-none bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-md py-2 pl-3 pr-7 text-xs font-normal text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700 cursor-pointer outline-none min-w-[110px] focus:border-primary focus:ring-1 focus:ring-primary flex items-center justify-between"
+          className="appearance-none bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded px-4 py-2 text-xs font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700 cursor-pointer outline-none min-w-[110px] focus:border-primary focus:ring-1 focus:ring-primary flex items-center justify-between gap-1.5 shadow-xs transition-all duration-150 active:scale-[0.98]"
         >
           <span className="truncate">{getMonthLabel()}</span>
           <ChevronDown className="w-3 h-3 text-slate-400 dark:text-slate-500 shrink-0 ml-1" />
         </button>
 
         {isMonthOpen && (
-          <div className="absolute top-full right-0 sm:left-0 mt-1 z-[600] w-52 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-md shadow-lg p-2 text-xs space-y-1">
+          <div className="absolute top-full right-0 sm:left-0 mt-1 z-[600] w-52 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-md shadow-lg p-2 text-xs space-y-1 animate-in fade-in zoom-in-95 duration-150">
             <div className="flex items-center justify-between px-1 pb-1 border-b border-slate-100 dark:border-slate-700 text-[11px] text-slate-400 font-medium">
               <span>Select Months</span>
               <div className="space-x-1.5">

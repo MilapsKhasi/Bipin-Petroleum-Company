@@ -34,7 +34,7 @@ export const NewVoucherDropdown: React.FC<NewVoucherDropdownProps> = ({
       <button
         type="button"
         onClick={() => setIsOpen(!isOpen)}
-        className="px-4 py-2 bg-primary text-white font-medium text-xs rounded capitalize hover:bg-primary-dark flex items-center justify-between gap-1.5 shadow-sm transition-none"
+        className="px-4 py-2 bg-primary text-white font-medium text-xs rounded capitalize hover:bg-primary-dark active:scale-[0.98] flex items-center justify-between gap-1.5 shadow-sm transition-all duration-150 cursor-pointer"
       >
         <span>New Voucher</span>
         <ChevronDown className={`w-3.5 h-3.5 transition-transform duration-150 ${isOpen ? 'rotate-180' : ''}`} />

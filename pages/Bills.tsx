@@ -10,6 +10,8 @@ import DateFilter, { DateFilterHandle } from '../components/DateFilter';
 import ExportModal from '../components/ExportModal';
 import EmptyState from '../components/EmptyState';
 import { supabase } from '../lib/supabase';
+import TableSkeleton from '../components/TableSkeleton';
+import { toast } from '../utils/toast';
 
 const Bills = () => {
   const location = useLocation();
@@ -197,8 +199,11 @@ const Bills = () => {
     const { error } = await supabase.from('purchase_bills').update({ is_deleted: true }).eq('id', deleteDialog.bill.id);
     if (!error) {
       await unsyncTransactionFromCashbook(deleteDialog.bill);
+      toast.success(`Purchase Bill #${deleteDialog.bill.bill_number || ''} deleted`);
       loadData();
       window.dispatchEvent(new Event('appSettingsChanged'));
+    } else {
+      toast.error('Failed to delete purchase bill');
     }
     setDeleteDialog({ isOpen: false, bill: null });
   };
@@ -233,13 +238,13 @@ const Bills = () => {
         <button
           ref={newEntryBtnRef}
           onClick={() => { setEditingBill(null); setIsModalOpen(true); }}
-          className="w-full sm:w-auto bg-primary text-white px-5 py-2.5 rounded-md font-medium text-sm hover:bg-primary-dark flex items-center justify-center shadow-sm cursor-pointer"
+          className="w-full sm:w-auto bg-primary text-white px-4 py-2 rounded font-medium text-xs hover:bg-primary-dark active:scale-[0.98] flex items-center justify-center gap-1.5 shadow-sm transition-all duration-150 cursor-pointer"
         >
-          <Plus className="w-4 h-4 mr-2" /> New Entry
+          <Plus className="w-3.5 h-3.5" /> <span>New Entry</span>
         </button>
       </div>
 
-      <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden p-4 sm:p-6 space-y-4">
+      <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200/90 dark:border-slate-800 shadow-sm overflow-hidden p-4 sm:p-6 space-y-4">
         <div className="flex flex-col md:flex-row gap-4 items-center justify-between">
           <div className="relative w-full md:max-w-xs shrink-0">
             <Search className="absolute left-3 top-2.5 w-4 h-4 text-slate-400" />
@@ -256,30 +261,40 @@ const Bills = () => {
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 pt-1">
-          <div className="bg-slate-50 dark:bg-slate-800/40 border border-slate-100 dark:border-slate-800 rounded-xl p-4 flex items-center justify-between">
+          <div className="bg-slate-50/70 dark:bg-slate-800/40 border border-slate-200/60 dark:border-slate-800 rounded-xl p-4 flex items-center justify-between shadow-xs hover:border-slate-300 dark:hover:border-slate-700 transition-colors">
             <div>
               <p className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest block">Total Purchase</p>
-              <p className="text-xl font-bold font-mono text-slate-900 dark:text-white mt-1">
+              <p className="text-xl font-bold font-mono tabular-nums text-slate-900 dark:text-white mt-1">
                 {formatCurrency(totalPurchase)}
               </p>
             </div>
-            <div className="w-9 h-9 rounded-lg bg-primary/10 flex items-center justify-center text-primary">
+            <div className="w-9 h-9 rounded-lg bg-primary/10 flex items-center justify-center text-primary shadow-2xs">
               <ShoppingBag className="w-4 h-4" />
             </div>
           </div>
         </div>
 
         {loading ? (
-          <div className="h-64 flex items-center justify-center">
-            <Loader2 className="w-8 h-8 animate-spin text-primary" />
-          </div>
-        ) : filtered.length === 0 ? (
+          <TableSkeleton rows={6} columns={8} />
+        ) : bills.length === 0 ? (
           <EmptyState 
             title="No Purchase Bills Found" 
             message="Keep track of your supply chain by registering your first purchase invoice today!" 
             actionLabel="New Purchase Entry" 
             onAction={() => { setEditingBill(null); setIsModalOpen(true); }} 
           />
+        ) : filtered.length === 0 ? (
+          <div className="py-16 text-center text-slate-400 dark:text-slate-500 bg-slate-50/50 dark:bg-slate-800/30 rounded-lg border border-dashed border-slate-200 dark:border-slate-700">
+            <Search className="w-8 h-8 text-slate-300 dark:text-slate-600 mx-auto mb-2" />
+            <p className="text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">No matching bills found</p>
+            <p className="text-xs text-slate-400 mb-4">No results match your search query &quot;{searchQuery}&quot;</p>
+            <button
+              onClick={() => setSearchQuery('')}
+              className="px-4 py-2 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded text-xs font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700 active:scale-[0.98] transition-all shadow-xs cursor-pointer"
+            >
+              Clear Search
+            </button>
+          </div>
         ) : (
           <div className="overflow-x-auto border border-slate-100 dark:border-slate-800 rounded-lg">
             <table className="w-full text-left border-collapse min-w-[800px]">
@@ -306,22 +321,22 @@ const Bills = () => {
                           el.scrollIntoView({ behavior: 'smooth', block: 'center' });
                         }
                       }}
-                      className={`transition-all cursor-pointer ${
+                      className={`transition-colors duration-150 cursor-pointer ${
                         isHighlighted
                           ? 'bg-amber-100/90 dark:bg-amber-950/60 border-l-4 border-amber-500 ring-2 ring-amber-400/60 shadow-md font-semibold'
                           : selectedRowIdx === i 
-                            ? 'bg-slate-50 dark:bg-slate-800 border-l-4 border-primary font-medium' 
-                            : 'hover:bg-slate-50/50 dark:hover:bg-slate-800/30'
+                            ? 'bg-slate-100/80 dark:bg-slate-800 border-l-4 border-primary font-medium' 
+                            : 'hover:bg-slate-50/90 dark:hover:bg-slate-800/60'
                       }`}
                       onClick={() => { setSelectedRowIdx(i); setHighlightedId(b.id); }}
                     >
-                      <td className="py-3 px-4 text-slate-400 font-mono">{i + 1}</td>
-                      <td className="py-3 px-4 font-mono">{formatDate(b.date)}</td>
-                      <td className="py-3 px-4 font-mono font-semibold text-slate-900 dark:text-white">{b.bill_number}</td>
+                      <td className="py-3 px-4 text-slate-400 font-mono tabular-nums">{i + 1}</td>
+                      <td className="py-3 px-4 font-mono tabular-nums">{formatDate(b.date)}</td>
+                      <td className="py-3 px-4 font-mono tabular-nums font-semibold text-slate-900 dark:text-white">{b.bill_number}</td>
                       <td className="py-3 px-4 font-medium text-slate-900 dark:text-white capitalize">{b.vendor_name}</td>
-                      <td className="py-3 px-4 text-right font-mono text-slate-600 dark:text-slate-400">{formatCurrency(b.total_without_gst)}</td>
-                      <td className="py-3 px-4 text-right font-mono text-slate-600 dark:text-slate-400">{formatCurrency(b.total_gst)}</td>
-                      <td className="py-3 px-4 text-right font-mono font-bold text-slate-900 dark:text-white">{formatCurrency(b.grand_total)}</td>
+                      <td className="py-3 px-4 text-right font-mono tabular-nums text-slate-600 dark:text-slate-400">{formatCurrency(b.total_without_gst)}</td>
+                      <td className="py-3 px-4 text-right font-mono tabular-nums text-slate-600 dark:text-slate-400">{formatCurrency(b.total_gst)}</td>
+                      <td className="py-3 px-4 text-right font-mono tabular-nums font-bold text-slate-900 dark:text-white">{formatCurrency(b.grand_total)}</td>
                       <td className="py-3 px-4 text-center" onClick={(e) => e.stopPropagation()}>
                         <div className="flex items-center justify-center space-x-1">
                           <button onClick={() => { setEditingBill(b); setIsModalOpen(true); }} className="p-1 text-slate-400 hover:text-primary rounded transition-colors" title="Edit Bill">

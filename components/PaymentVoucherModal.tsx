@@ -1,8 +1,11 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { Loader2, Calendar, CreditCard, FileText, ArrowDownCircle, ArrowUpCircle } from 'lucide-react';
 import Modal from './Modal';
 import { supabase } from '../lib/supabase';
 import { getActiveCompanyId, formatDate, normalizeBill, safeSupabaseSave, syncTransactionToCashbook, formatCurrency } from '../utils/helpers';
+import FormActionButtons from './FormActionButtons';
+import { useKeyboardShortcuts } from '../utils/shortcutManager';
+import { toast } from '../utils/toast';
 
 interface PaymentVoucherModalProps {
   isOpen: boolean;
@@ -174,18 +177,18 @@ export const PaymentVoucherModal: React.FC<PaymentVoucherModalProps> = ({
     if (saving) return;
     const cid = getActiveCompanyId();
     if (!cid) {
-      alert('Please select or create a workspace first.');
+      toast.error('Please select or create a workspace first.');
       return;
     }
 
     if (!partyName) {
-      alert('Please select a party.');
+      toast.warning('Please select a party.');
       return;
     }
 
     const parsedAmount = parseFloat(amount);
     if (isNaN(parsedAmount) || parsedAmount <= 0) {
-      alert('Please enter a valid amount.');
+      toast.warning('Please enter a valid amount.');
       return;
     }
 
@@ -287,6 +290,7 @@ export const PaymentVoucherModal: React.FC<PaymentVoucherModalProps> = ({
 
       window.dispatchEvent(new Event('appSettingsChanged'));
 
+      toast.success("Payment voucher saved successfully.");
       if (onSuccess) onSuccess();
 
       if (isSaveAndNew) {
@@ -295,11 +299,31 @@ export const PaymentVoucherModal: React.FC<PaymentVoucherModalProps> = ({
         onClose();
       }
     } catch (err: any) {
-      alert('Error saving voucher: ' + err.message);
+      toast.error('Error saving voucher: ' + (err.message || 'Unknown error'));
     } finally {
       setSaving(false);
     }
   };
+
+  const formRef = useRef<HTMLFormElement>(null);
+
+  useKeyboardShortcuts({
+    onSave: isOpen ? () => {
+      setIsSaveAndNew(false);
+      if (formRef.current) {
+        if (typeof formRef.current.requestSubmit === 'function') formRef.current.requestSubmit();
+        else formRef.current.dispatchEvent(new Event('submit', { cancelable: true, bubbles: true }));
+      }
+    } : undefined,
+    onSaveAndNew: isOpen ? () => {
+      setIsSaveAndNew(true);
+      if (formRef.current) {
+        if (typeof formRef.current.requestSubmit === 'function') formRef.current.requestSubmit();
+        else formRef.current.dispatchEvent(new Event('submit', { cancelable: true, bubbles: true }));
+      }
+    } : undefined,
+    priority: 35
+  }, [isOpen, date, account, partyName, amount, description, selectedBillIds]);
 
   return (
     <Modal
@@ -308,7 +332,7 @@ export const PaymentVoucherModal: React.FC<PaymentVoucherModalProps> = ({
       title={voucherType === 'Receipt' ? 'New Receive Payment Voucher' : 'New Pay Supplier Voucher'}
       maxWidth="max-w-5xl"
     >
-      <form onSubmit={handleSave} className="p-6 space-y-4">
+      <form ref={formRef} onSubmit={handleSave} className="p-6 space-y-4">
         <div>
           <label className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest block mb-2">Voucher Type</label>
           <div className="grid grid-cols-2 gap-2">
@@ -378,7 +402,7 @@ export const PaymentVoucherModal: React.FC<PaymentVoucherModalProps> = ({
               required
               value={partyName}
               onChange={(e) => setPartyName(e.target.value)}
-              className="w-full px-3 py-2 border border-slate-200 dark:border-slate-700 dark:bg-slate-800 dark:text-white rounded-lg outline-none text-xs focus:ring-2 focus:ring-primary/20 transition-all"
+              className="w-full px-4 py-2 border border-slate-200 dark:border-slate-700 dark:bg-slate-800 dark:text-white rounded outline-none text-xs focus:ring-2 focus:ring-primary/20 transition-all"
             >
               <option value="" className="bg-white dark:bg-slate-800 text-slate-900 dark:text-white">Select Party</option>
               {voucherType === 'Receipt' ? (
@@ -493,30 +517,29 @@ export const PaymentVoucherModal: React.FC<PaymentVoucherModalProps> = ({
           </div>
         </div>
 
-        <div className="flex justify-end space-x-3 pt-4 border-t border-slate-100 dark:border-slate-800">
-          <button
-            type="button"
-            onClick={onClose}
-            className="px-4 py-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-500 rounded-lg text-xs hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors"
-          >
-            Cancel
-          </button>
-          <button
-            type="submit"
-            onClick={() => setIsSaveAndNew(true)}
-            disabled={saving}
-            className="px-4 py-2 bg-emerald-600 text-white font-medium rounded-lg hover:bg-emerald-700 text-xs flex items-center shadow-sm disabled:opacity-50"
-          >
-            {saving && isSaveAndNew && <Loader2 className="w-3 h-3 animate-spin mr-1.5" />} Save & New
-          </button>
-          <button
-            type="submit"
-            onClick={() => setIsSaveAndNew(false)}
-            disabled={saving}
-            className="px-5 py-2 bg-primary text-white font-medium rounded-lg hover:bg-primary-dark text-xs flex items-center shadow-sm disabled:opacity-50"
-          >
-            {saving && !isSaveAndNew && <Loader2 className="w-3 h-3 animate-spin mr-1.5" />} Save Entry
-          </button>
+        <div className="pt-4 border-t border-slate-100 dark:border-slate-800">
+          <FormActionButtons
+            primaryText={`Save ${voucherType}`}
+            primaryType="submit"
+            primaryOnClick={() => setIsSaveAndNew(false)}
+            primaryDisabled={saving}
+            primaryLoading={saving && !isSaveAndNew}
+
+            secondaryLeftText="Save & New"
+            secondaryLeftType="submit"
+            secondaryLeftOnClick={() => setIsSaveAndNew(true)}
+            secondaryLeftDisabled={saving}
+            secondaryLeftLoading={saving && isSaveAndNew}
+
+            secondaryRightText="Save & Close"
+            secondaryRightType="submit"
+            secondaryRightOnClick={() => setIsSaveAndNew(false)}
+            secondaryRightDisabled={saving}
+
+            discardText="Discard"
+            discardOnClick={onClose}
+            discardDisabled={saving}
+          />
         </div>
       </form>
     </Modal>

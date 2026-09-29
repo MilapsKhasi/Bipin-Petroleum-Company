@@ -9,6 +9,9 @@ import StockForm from './StockForm';
 import ItemSelectDropdown from './ItemSelectDropdown';
 import PaymentModal from './PaymentModal';
 import { recordActivity } from '../utils/activityTracker';
+import FormActionButtons from './FormActionButtons';
+import { useKeyboardShortcuts } from '../utils/shortcutManager';
+import { toast } from '../utils/toast';
 
 interface BillFormProps {
   initialData?: any;
@@ -73,6 +76,32 @@ const BillForm: React.FC<BillFormProps> = ({ initialData, onSubmit, onCancel, fo
 
   const formRef = useRef<HTMLFormElement>(null);
 
+  // Global Shortcut listener for Ctrl+S, Ctrl+P, Ctrl+Shift+S
+  useKeyboardShortcuts({
+    onSave: () => {
+      setIsSaveAndNew(false);
+      if (formRef.current) {
+        if (typeof formRef.current.requestSubmit === 'function') formRef.current.requestSubmit();
+        else formRef.current.dispatchEvent(new Event('submit', { cancelable: true, bubbles: true }));
+      }
+    },
+    onSaveAndNew: () => {
+      setIsSaveAndNew(true);
+      if (formRef.current) {
+        if (typeof formRef.current.requestSubmit === 'function') formRef.current.requestSubmit();
+        else formRef.current.dispatchEvent(new Event('submit', { cancelable: true, bubbles: true }));
+      }
+    },
+    onPrint: () => {
+      setIsSaveAndNew(false);
+      if (formRef.current) {
+        if (typeof formRef.current.requestSubmit === 'function') formRef.current.requestSubmit();
+        else formRef.current.dispatchEvent(new Event('submit', { cancelable: true, bubbles: true }));
+      }
+    },
+    priority: 30
+  }, [formData]);
+
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') {
@@ -82,18 +111,6 @@ const BillForm: React.FC<BillFormProps> = ({ initialData, onSubmit, onCancel, fo
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'y') {
         e.preventDefault();
         redo();
-      }
-      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') {
-        e.preventDefault();
-        if (formRef.current) {
-          if (typeof formRef.current.requestSubmit === 'function') {
-            formRef.current.requestSubmit();
-          } else {
-            const btn = formRef.current.querySelector('button[type="submit"]') as HTMLButtonElement | null;
-            if (btn) btn.click();
-            else formRef.current.dispatchEvent(new Event('submit', { cancelable: true, bubbles: true }));
-          }
-        }
       }
     };
     window.addEventListener('keydown', handleKeyDown);
@@ -397,8 +414,9 @@ const BillForm: React.FC<BillFormProps> = ({ initialData, onSubmit, onCancel, fo
       }
 
       setItemModal({ isOpen: false, rowIdx: null });
+      toast.success("Stock item created successfully.");
     } catch (err: any) {
-      alert("Error creating stock item: " + err.message);
+      toast.error("Error creating stock item: " + (err.message || 'Unknown error'));
     }
   };
 
@@ -418,7 +436,10 @@ const BillForm: React.FC<BillFormProps> = ({ initialData, onSubmit, onCancel, fo
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (loading) return;
-    if (!formData.vendor_name || !formData.bill_number) return alert("Required: Vendor and Bill No");
+    if (!formData.vendor_name || !formData.bill_number) {
+      toast.warning("Required: Vendor and Bill No");
+      return;
+    }
     setLoading(true);
     try {
       const user = await getAuthUser();
@@ -448,6 +469,7 @@ const BillForm: React.FC<BillFormProps> = ({ initialData, onSubmit, onCancel, fo
       await ensureParty(formData.vendor_name, 'vendor', cid);
       if (payload.status === 'Paid' && savedRes.data) await syncTransactionToCashbook(savedRes.data[0]);
       window.dispatchEvent(new Event('appSettingsChanged'));
+      toast.success(initialData ? "Bill updated successfully." : "Bill saved successfully.");
       onSubmit(payload, isSaveAndNew);
       if (isSaveAndNew) {
         setFormData(getInitialState());
@@ -455,7 +477,11 @@ const BillForm: React.FC<BillFormProps> = ({ initialData, onSubmit, onCancel, fo
         manualOverrides.current = new Set();
         loadDependencies();
       }
-    } catch (err: any) { alert("Error: " + err.message); } finally { setLoading(false); }
+    } catch (err: any) { 
+      toast.error("Error: " + (err.message || 'Unknown error')); 
+    } finally { 
+      setLoading(false); 
+    }
   };
 
   return (
@@ -653,15 +679,28 @@ const BillForm: React.FC<BillFormProps> = ({ initialData, onSubmit, onCancel, fo
             </div>
         </div>
 
-        <div className="flex items-center justify-end space-x-6">
-            <button type="button" onClick={onCancel} disabled={loading} className="text-[14px] text-slate-400 hover:text-slate-800 font-medium capitalize disabled:opacity-50 disabled:cursor-not-allowed">Discard</button>
-            <button type="submit" onClick={() => setIsSaveAndNew(true)} disabled={loading} className="bg-emerald-600 text-white px-6 py-3 rounded font-bold text-[14px] hover:bg-emerald-700 shadow active:scale-95 flex items-center capitalize transition-all disabled:opacity-50 disabled:cursor-not-allowed">
-                {loading && isSaveAndNew && <Loader2 className="w-4 h-4 animate-spin mr-2" />}Save & New
-            </button>
-            <button type="submit" onClick={() => setIsSaveAndNew(false)} disabled={loading} className="bg-primary text-white px-10 py-3 rounded font-bold text-[14px] hover:bg-primary-dark shadow-lg active:scale-95 flex items-center capitalize transition-all disabled:opacity-50 disabled:cursor-not-allowed">
-                {loading && !isSaveAndNew && <Loader2 className="w-4 h-4 animate-spin mr-2" />}{initialData ? 'Update Bill' : 'Save Statement'}
-            </button>
-        </div>
+        <FormActionButtons
+          primaryText={initialData ? 'Update Bill' : 'Save Statement'}
+          primaryType="submit"
+          primaryOnClick={() => setIsSaveAndNew(false)}
+          primaryDisabled={loading}
+          primaryLoading={loading && !isSaveAndNew}
+
+          secondaryLeftText="Save & New"
+          secondaryLeftType="submit"
+          secondaryLeftOnClick={() => setIsSaveAndNew(true)}
+          secondaryLeftDisabled={loading}
+          secondaryLeftLoading={loading && isSaveAndNew}
+
+          secondaryRightText="Save & Close"
+          secondaryRightType="submit"
+          secondaryRightOnClick={() => setIsSaveAndNew(false)}
+          secondaryRightDisabled={loading}
+
+          discardText="Discard"
+          discardOnClick={onCancel}
+          discardDisabled={loading}
+        />
       </form>
     </div>
   );

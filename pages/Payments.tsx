@@ -6,6 +6,9 @@ import Modal from '../components/Modal';
 import DateFilter, { DateFilterHandle } from '../components/DateFilter';
 import EmptyState from '../components/EmptyState';
 import ConfirmDialog from '../components/ConfirmDialog';
+import FormActionButtons from '../components/FormActionButtons';
+import TableSkeleton from '../components/TableSkeleton';
+import { toast } from '../utils/toast';
 import { supabase } from '../lib/supabase';
 
 interface Voucher {
@@ -390,10 +393,19 @@ const Payments: React.FC<PaymentsProps> = ({ typeFilter }) => {
 
   const handleSaveVoucher = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!partyName) return alert("Please select a Party Name.");
-    if (!account.trim()) return alert("Please specify an Account.");
+    if (!partyName) {
+      toast.warning("Please select a Party Name.");
+      return;
+    }
+    if (!account.trim()) {
+      toast.warning("Please specify an Account.");
+      return;
+    }
     const parsedAmount = parseFloat(amount);
-    if (isNaN(parsedAmount) || parsedAmount <= 0) return alert("Amount must be greater than 0.");
+    if (isNaN(parsedAmount) || parsedAmount <= 0) {
+      toast.warning("Amount must be greater than 0.");
+      return;
+    }
 
     setSaving(true);
     const cid = getActiveCompanyId();
@@ -533,13 +545,14 @@ const Payments: React.FC<PaymentsProps> = ({ typeFilter }) => {
       }
 
       window.dispatchEvent(new Event('appSettingsChanged'));
+      toast.success(editingVoucher ? "Voucher updated successfully." : "Voucher created successfully.");
       if (!isSaveAndNew) {
         setIsModalOpen(false);
       }
       resetForm();
       loadData();
     } catch (err: any) {
-      alert("Error saving voucher: " + err.message);
+      toast.error("Error saving voucher: " + (err.message || 'Unknown error'));
     } finally {
       setSaving(false);
     }
@@ -569,9 +582,11 @@ const Payments: React.FC<PaymentsProps> = ({ typeFilter }) => {
       }
 
       window.dispatchEvent(new Event('appSettingsChanged'));
+      toast.success(`${voucher.type} voucher #${voucher.voucher_no} deleted`);
       loadData();
     } catch (err: any) {
       console.error("Error deleting voucher:", err);
+      toast.error('Failed to delete voucher: ' + (err.message || 'Unknown error'));
     } finally {
       setLoading(false);
       setDeleteDialog({ isOpen: false, voucher: null });
@@ -651,9 +666,9 @@ const Payments: React.FC<PaymentsProps> = ({ typeFilter }) => {
         </div>
         <button
           onClick={() => { resetForm(); setIsModalOpen(true); }}
-          className="w-full sm:w-auto bg-primary text-white px-5 py-2.5 rounded-md font-medium text-sm hover:bg-primary-dark flex items-center justify-center shadow-sm cursor-pointer"
+          className="w-full sm:w-auto bg-primary text-white px-4 py-2 rounded font-medium text-xs hover:bg-primary-dark active:scale-[0.98] flex items-center justify-center gap-1.5 shadow-sm transition-all duration-150 cursor-pointer"
         >
-          <Plus className="w-4 h-4 mr-2" /> {newButtonLabel}
+          <Plus className="w-3.5 h-3.5" /> <span>{newButtonLabel}</span>
         </button>
       </div>
 
@@ -767,9 +782,7 @@ const Payments: React.FC<PaymentsProps> = ({ typeFilter }) => {
         )}
 
         {loading ? (
-          <div className="h-64 flex items-center justify-center">
-            <Loader2 className="w-8 h-8 animate-spin text-primary" />
-          </div>
+          <TableSkeleton rows={6} columns={typeFilter ? 7 : 8} />
         ) : filteredVouchers.length === 0 ? (
           <EmptyState
             title={`No ${pageTitle} Vouchers Found`}
@@ -809,15 +822,15 @@ const Payments: React.FC<PaymentsProps> = ({ typeFilter }) => {
                           el.scrollIntoView({ behavior: 'smooth', block: 'center' });
                         }
                       }}
-                      className={`transition-all cursor-pointer ${
+                      className={`transition-colors duration-150 cursor-pointer ${
                         isHighlighted
                           ? 'bg-amber-100/90 dark:bg-amber-950/60 border-l-4 border-amber-500 ring-2 ring-amber-400/60 shadow-md font-semibold'
-                          : 'hover:bg-slate-50/50 dark:hover:bg-slate-800/30'
+                          : 'hover:bg-slate-50/90 dark:hover:bg-slate-800/60'
                       }`}
                       onClick={() => setHighlightedId(voucher.id)}
                     >
-                      <td className="py-3 px-4 font-mono">{formatDate(voucher.date)}</td>
-                      <td className="py-3 px-4 font-semibold font-mono">{voucher.voucher_no}</td>
+                      <td className="py-3 px-4 font-mono tabular-nums">{formatDate(voucher.date)}</td>
+                      <td className="py-3 px-4 font-semibold font-mono tabular-nums">{voucher.voucher_no}</td>
                       {!typeFilter && (
                         <td className="py-3 px-4">
                           <span className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider ${voucher.type === 'Receipt' ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-400' : 'bg-rose-50 text-rose-700 dark:bg-rose-900/20 dark:text-rose-400'}`}>
@@ -832,7 +845,7 @@ const Payments: React.FC<PaymentsProps> = ({ typeFilter }) => {
                       )}
                       <td className="py-3 px-4 capitalize">{voucher.account}</td>
                       <td className="py-3 px-4 font-medium text-slate-900 dark:text-white">{voucher.party_name}</td>
-                      <td className="py-3 px-4 text-right font-mono font-bold text-slate-900 dark:text-white">
+                      <td className={`py-3 px-4 text-right font-mono tabular-nums font-bold ${voucher.type === 'Receipt' ? 'text-emerald-600 dark:text-emerald-400' : 'text-slate-900 dark:text-white'}`}>
                         {formatCurrency(voucher.amount)}
                       </td>
                       <td className="py-3 px-4 text-slate-400 max-w-xs truncate" title={voucher.description}>
@@ -951,7 +964,7 @@ const Payments: React.FC<PaymentsProps> = ({ typeFilter }) => {
                 required
                 value={partyName}
                 onChange={(e) => setPartyName(e.target.value)}
-                className="w-full px-3 py-2 border border-slate-200 dark:border-slate-700 dark:bg-slate-800 dark:text-white rounded-lg outline-none text-xs focus:ring-2 focus:ring-primary/20 transition-all"
+                className="w-full px-4 py-2 border border-slate-200 dark:border-slate-700 dark:bg-slate-800 dark:text-white rounded outline-none text-xs focus:ring-2 focus:ring-primary/20 transition-all"
               >
                 <option value="" className="bg-white dark:bg-slate-800 text-slate-900 dark:text-white">Select Party</option>
                 {voucherType === 'Receipt' ? (
@@ -1066,32 +1079,30 @@ const Payments: React.FC<PaymentsProps> = ({ typeFilter }) => {
             </div>
           </div>
 
-          <div className="flex justify-end space-x-3 pt-4 border-t border-slate-100 dark:border-slate-800">
-            <button
-              type="button"
-              onClick={() => setIsModalOpen(false)}
-              className="px-4 py-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-500 rounded-lg text-xs hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors"
-            >
-              Cancel
-            </button>
-            {!editingVoucher && (
-              <button
-                type="submit"
-                onClick={() => setIsSaveAndNew(true)}
-                disabled={saving}
-                className="px-4 py-2 bg-emerald-600 text-white font-medium rounded-lg hover:bg-emerald-700 text-xs flex items-center shadow-sm disabled:opacity-50"
-              >
-                {saving && isSaveAndNew && <Loader2 className="w-3 h-3 animate-spin mr-1.5" />} Save & New
-              </button>
-            )}
-            <button
-              type="submit"
-              onClick={() => setIsSaveAndNew(false)}
-              disabled={saving}
-              className="px-5 py-2 bg-primary text-white font-medium rounded-lg hover:bg-primary-dark text-xs flex items-center shadow-sm disabled:opacity-50"
-            >
-              {saving && !isSaveAndNew && <Loader2 className="w-3 h-3 animate-spin mr-1.5" />} {editingVoucher ? 'Save Changes' : 'Save Entry'}
-            </button>
+          <div className="pt-4 border-t border-slate-100 dark:border-slate-800">
+            <FormActionButtons
+              primaryText={editingVoucher ? 'Save Changes' : `Save ${voucherType}`}
+              primaryType="submit"
+              primaryOnClick={() => setIsSaveAndNew(false)}
+              primaryDisabled={saving}
+              primaryLoading={saving && !isSaveAndNew}
+
+              secondaryLeftText="Save & New"
+              secondaryLeftType="submit"
+              secondaryLeftOnClick={() => setIsSaveAndNew(true)}
+              secondaryLeftDisabled={saving}
+              secondaryLeftLoading={saving && isSaveAndNew}
+              showSecondaryLeft={!editingVoucher}
+
+              secondaryRightText="Save & Close"
+              secondaryRightType="submit"
+              secondaryRightOnClick={() => setIsSaveAndNew(false)}
+              secondaryRightDisabled={saving}
+
+              discardText="Discard"
+              discardOnClick={() => setIsModalOpen(false)}
+              discardDisabled={saving}
+            />
           </div>
         </form>
       </Modal>

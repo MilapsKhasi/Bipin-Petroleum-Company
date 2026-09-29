@@ -4,6 +4,8 @@ import { Save, Loader2, Check } from 'lucide-react';
 // Fixed: Removed non-existent getDatePlaceholder from imports
 import { getActiveCompanyId, formatCurrency, parseDateFromInput, formatDate } from '../utils/helpers';
 import { supabase } from '../lib/supabase';
+import FormActionButtons from './FormActionButtons';
+import { toast } from '../utils/toast';
 
 interface SimplifiedPurchaseFormProps {
   initialData?: any;
@@ -49,9 +51,15 @@ const SimplifiedPurchaseForm: React.FC<SimplifiedPurchaseFormProps> = ({ initial
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!formData.date || !formData.bill_number || !formData.vendor_name) return alert("Fill all mandatory fields.");
+    if (!formData.date || !formData.bill_number || !formData.vendor_name) {
+      toast.warning("Fill all mandatory fields (Date, Bill No, Vendor).");
+      return;
+    }
     
-    if (!cid) return alert("No active workspace selected.");
+    if (!cid) {
+      toast.error("No active workspace selected.");
+      return;
+    }
 
     setLoading(true);
     try {
@@ -84,10 +92,11 @@ const SimplifiedPurchaseForm: React.FC<SimplifiedPurchaseFormProps> = ({ initial
         throw new Error(error.message);
       }
       
+      toast.success(initialData?.id ? "Purchase bill updated." : "Purchase bill recorded.");
       window.dispatchEvent(new Event('appSettingsChanged'));
       onSubmit(payload);
     } catch (err: any) {
-      alert("Error saving: " + err.message);
+      toast.error("Error saving: " + (err.message || 'Unknown error'));
     } finally {
       setLoading(false);
     }
@@ -143,13 +152,27 @@ const SimplifiedPurchaseForm: React.FC<SimplifiedPurchaseFormProps> = ({ initial
           </div>
       </div>
 
-      <div className="flex justify-end space-x-3 pt-4 border-t border-slate-100">
-        <button type="button" onClick={onCancel} className="px-6 py-2.5 text-slate-400 font-bold uppercase text-[10px] tracking-widest">Cancel</button>
-        <button type="submit" disabled={loading} className="px-10 py-2.5 bg-primary text-white font-bold uppercase text-[10px] tracking-widest rounded border border-slate-200 hover:bg-primary-dark transition-all shadow-sm flex items-center disabled:opacity-50">
-          {loading ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Check className="w-4 h-4 mr-2" />}
-          Save Purchase
-        </button>
-      </div>
+      <FormActionButtons
+        primaryText={initialData ? 'Update Purchase' : 'Save Purchase'}
+        primaryType="submit"
+        primaryDisabled={loading}
+        primaryLoading={loading}
+
+        secondaryLeftText="Save & New"
+        secondaryLeftType="submit"
+        secondaryLeftOnClick={() => {
+          // Trigger submit with new flag or standard submit
+        }}
+        secondaryLeftDisabled={loading}
+
+        secondaryRightText="Save & Close"
+        secondaryRightType="submit"
+        secondaryRightDisabled={loading}
+
+        discardText="Discard"
+        discardOnClick={onCancel}
+        discardDisabled={loading}
+      />
     </form>
   );
 };

@@ -12,6 +12,7 @@ import ConfirmDialog from '../components/ConfirmDialog';
 import PartyForm from '../components/PartyForm';
 import LedgerModal from '../components/LedgerModal';
 import EmptyState from '../components/EmptyState';
+import { toast } from '../utils/toast';
 
 const Parties = () => {
   const location = useLocation();
@@ -158,11 +159,13 @@ const Parties = () => {
         setSelectedPartyId(null);
       }
       
+      const partyName = deleteDialog.party.name;
       setDeleteDialog({ isOpen: false, party: null });
+      toast.success(`Party account "${partyName}" deleted`);
       loadData();
       window.dispatchEvent(new Event('appSettingsChanged'));
     } catch (err: any) {
-      alert('Error deleting party: ' + err.message);
+      toast.error('Error deleting party: ' + err.message);
     }
   };
 
@@ -368,14 +371,56 @@ const Parties = () => {
         </div>
         <button 
           onClick={() => { setEditingParty(null); setIsFormOpen(true); }} 
-          className="w-full sm:w-auto bg-primary text-white px-5 py-2.5 rounded-md font-medium text-sm hover:bg-primary-dark flex items-center justify-center shadow-sm cursor-pointer"
+          className="w-full sm:w-auto bg-primary text-white px-4 py-2 rounded font-medium text-xs hover:bg-primary-dark active:scale-[0.98] flex items-center justify-center gap-1.5 shadow-sm transition-all duration-150 cursor-pointer"
         >
-          <Plus className="w-4 h-4 mr-2" /> New Party Account
+          <Plus className="w-3.5 h-3.5" /> <span>New Party Account</span>
         </button>
       </div>
 
-      {/* Empty State */}
-      {!loading && parties.length === 0 ? (
+      {/* Skeleton Loading & Empty State */}
+      {loading ? (
+        <div className="flex-1 flex flex-col lg:flex-row gap-6 min-h-0 overflow-hidden">
+          <div className="w-full lg:w-80 flex flex-col space-y-3 shrink-0">
+            <div className="h-9 bg-slate-200 dark:bg-slate-800 rounded-md animate-pulse" />
+            <div className="h-8 bg-slate-100 dark:bg-slate-800 rounded-md animate-pulse" />
+            {Array.from({ length: 5 }).map((_, idx) => (
+              <div key={idx} className="p-4 border border-slate-200 dark:border-slate-800 rounded-md bg-white dark:bg-slate-900 space-y-2 animate-pulse">
+                <div className="h-3.5 bg-slate-200 dark:bg-slate-800 rounded w-3/4" />
+                <div className="flex justify-between items-center pt-2">
+                  <div className="h-3 bg-slate-100 dark:bg-slate-800 rounded w-16" />
+                  <div className="h-4 bg-slate-200 dark:bg-slate-800 rounded w-16" />
+                </div>
+              </div>
+            ))}
+          </div>
+          <div className="flex-1 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-md p-6 space-y-6 hidden lg:flex flex-col">
+            <div className="flex justify-between items-center border-b border-slate-100 dark:border-slate-800 pb-4 animate-pulse">
+              <div className="flex items-center space-x-3">
+                <div className="w-12 h-12 rounded-xl bg-slate-200 dark:bg-slate-800" />
+                <div className="space-y-2">
+                  <div className="h-4 bg-slate-200 dark:bg-slate-800 rounded w-48" />
+                  <div className="h-3 bg-slate-100 dark:bg-slate-800 rounded w-32" />
+                </div>
+              </div>
+              <div className="h-8 bg-slate-200 dark:bg-slate-800 rounded w-32" />
+            </div>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 animate-pulse">
+              {Array.from({ length: 4 }).map((_, idx) => (
+                <div key={idx} className="p-4 rounded-xl border border-slate-200 dark:border-slate-800 space-y-2">
+                  <div className="h-3 bg-slate-100 dark:bg-slate-800 rounded w-20" />
+                  <div className="h-6 bg-slate-200 dark:bg-slate-800 rounded w-20" />
+                </div>
+              ))}
+            </div>
+            <div className="flex-1 border border-slate-200 dark:border-slate-800 rounded-md p-4 space-y-3 animate-pulse">
+              <div className="h-4 bg-slate-200 dark:bg-slate-800 rounded w-40 mb-4" />
+              {Array.from({ length: 4 }).map((_, idx) => (
+                <div key={idx} className="h-8 bg-slate-100 dark:bg-slate-800 rounded w-full" />
+              ))}
+            </div>
+          </div>
+        </div>
+      ) : parties.length === 0 ? (
         <EmptyState 
           title="No Party Accounts Created" 
           message="You haven't added any ledger accounts yet. Manage your business sales, purchases, payments, and receipts under a single unified party register!" 
@@ -397,7 +442,7 @@ const Parties = () => {
                   value={searchQuery} 
                   onChange={(e) => setSearchQuery(e.target.value)} 
                   placeholder="Search by name, GSTIN..." 
-                  className="w-full pl-10 pr-4 py-2 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-md text-xs outline-none focus:border-slate-300 dark:focus:border-slate-600 text-slate-900 dark:text-slate-100" 
+                  className="w-full pl-10 pr-4 py-2 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-md text-xs outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all text-slate-900 dark:text-slate-100" 
                 />
               </div>
 
@@ -405,19 +450,19 @@ const Parties = () => {
               <div className="bg-slate-100 dark:bg-slate-800/60 p-1 rounded-md flex space-x-1 shrink-0">
                 <button
                   onClick={() => setFilterType('all')}
-                  className={`flex-1 py-1.5 text-[11px] font-medium rounded transition-none capitalize ${filterType === 'all' ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-xs' : 'text-slate-500 hover:text-slate-900'}`}
+                  className={`flex-1 py-1.5 text-[11px] font-medium rounded transition-all duration-150 active:scale-[0.98] capitalize ${filterType === 'all' ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-xs font-semibold' : 'text-slate-500 hover:text-slate-900 dark:hover:text-white'}`}
                 >
                   All
                 </button>
                 <button
                   onClick={() => setFilterType('debtor')}
-                  className={`flex-1 py-1.5 text-[11px] font-medium rounded transition-none capitalize ${filterType === 'debtor' ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-xs' : 'text-slate-500 hover:text-slate-900'}`}
+                  className={`flex-1 py-1.5 text-[11px] font-medium rounded transition-all duration-150 active:scale-[0.98] capitalize ${filterType === 'debtor' ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-xs font-semibold' : 'text-slate-500 hover:text-slate-900 dark:hover:text-white'}`}
                 >
                   Customers
                 </button>
                 <button
                   onClick={() => setFilterType('creditor')}
-                  className={`flex-1 py-1.5 text-[11px] font-medium rounded transition-none capitalize ${filterType === 'creditor' ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-xs' : 'text-slate-500 hover:text-slate-900'}`}
+                  className={`flex-1 py-1.5 text-[11px] font-medium rounded transition-all duration-150 active:scale-[0.98] capitalize ${filterType === 'creditor' ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-xs font-semibold' : 'text-slate-500 hover:text-slate-900 dark:hover:text-white'}`}
                 >
                   Vendors
                 </button>
@@ -447,12 +492,12 @@ const Parties = () => {
                         setSelectedPartyId(String(party.id));
                         setHighlightedId(String(party.id));
                       }} 
-                      className={`p-4 border rounded-[5px] cursor-pointer transition-all group ${
+                      className={`p-4 border rounded-[5px] cursor-pointer transition-all duration-150 active:scale-[0.99] group ${
                         isHighlighted
                           ? 'bg-amber-100 dark:bg-amber-950/60 border-amber-500 ring-2 ring-amber-400 text-slate-900 dark:text-white font-semibold shadow-md'
                           : isSelected 
-                            ? 'bg-primary border-transparent text-white' 
-                            : 'bg-white dark:bg-slate-800 border-slate-100 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-700/50'
+                            ? 'bg-primary border-transparent text-white shadow-xs' 
+                            : 'bg-white dark:bg-slate-800 border-slate-100 dark:border-slate-700 hover:border-slate-300 dark:hover:border-slate-600 hover:bg-slate-50/80 dark:hover:bg-slate-700/50'
                       }`}
                     >
                       <div className="flex justify-between items-start mb-1 gap-2">

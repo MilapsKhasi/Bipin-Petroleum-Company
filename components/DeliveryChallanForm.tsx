@@ -7,6 +7,8 @@ import StockForm from './StockForm';
 import BillForm from './BillForm';
 import ItemSelectDropdown from './ItemSelectDropdown';
 import { recordActivity } from '../utils/activityTracker';
+import FormActionButtons from './FormActionButtons';
+import { toast } from '../utils/toast';
 
 interface DeliveryChallanFormProps {
   initialData?: any;
@@ -288,8 +290,9 @@ export const DeliveryChallanForm: React.FC<DeliveryChallanFormProps> = ({
       }
 
       setItemModal({ isOpen: false, rowIdx: null });
+      toast.success("Stock item created successfully.");
     } catch (err: any) {
-      alert("Error creating stock item: " + err.message);
+      toast.error("Error creating stock item: " + (err.message || 'Unknown error'));
     }
   };
 
@@ -337,26 +340,26 @@ export const DeliveryChallanForm: React.FC<DeliveryChallanFormProps> = ({
 
   const handleSave = async (shouldPrint: boolean = false, isSaveAndNew: boolean = false) => {
     if (!cid) {
-      alert('Workspace company not loaded.');
+      toast.error('Workspace company not loaded.');
       return;
     }
     if (!partyName.trim()) {
-      alert('Please select or enter a Customer/Party Name.');
+      toast.warning('Please select or enter a Customer/Party Name.');
       return;
     }
     if (!challanNumber.trim()) {
-      alert('Please enter a Delivery Challan Number.');
+      toast.warning('Please enter a Delivery Challan Number.');
       return;
     }
 
     if (checkDuplicateChallanNo(challanNumber, existingChallans)) {
-      alert(`Delivery Challan number '${challanNumber.trim()}' already exists in database. Please enter a unique challan number.`);
+      toast.warning(`Delivery Challan number '${challanNumber.trim()}' already exists. Please enter a unique challan number.`);
       return;
     }
 
     const validItems = lineItems.filter(item => item.item_name.trim() !== '');
     if (validItems.length === 0) {
-      alert('Please add at least one stock item.');
+      toast.warning('Please add at least one stock item.');
       return;
     }
 
@@ -481,9 +484,10 @@ export const DeliveryChallanForm: React.FC<DeliveryChallanFormProps> = ({
       const normalized = normalizeBill(savedData);
 
       onSubmit(normalized, shouldPrint, isSaveAndNew);
+      toast.success(initialData ? "Delivery Challan updated successfully." : "Delivery Challan created successfully.");
     } catch (err: any) {
       console.error('Error saving delivery challan:', err);
-      alert(`Save failed: ${err.message || 'Unknown error'}`);
+      toast.error(`Save failed: ${err.message || 'Unknown error'}`);
     } finally {
       setSaving(false);
     }
@@ -576,9 +580,10 @@ export const DeliveryChallanForm: React.FC<DeliveryChallanFormProps> = ({
       const updatedStockList = await fetchStockItemsWithBalance(cid);
       setStockItemsList(updatedStockList || []);
       setStockAdjustmentModal({ isOpen: false, item: null });
+      toast.success("Stock adjustment saved successfully.");
       window.dispatchEvent(new Event('appSettingsChanged'));
     } catch (err: any) {
-      alert("Error saving stock item: " + err.message);
+      toast.error("Error saving stock item: " + (err.message || 'Unknown error'));
     }
   };
 
@@ -844,36 +849,27 @@ export const DeliveryChallanForm: React.FC<DeliveryChallanFormProps> = ({
       </div>
 
       {/* Action Buttons */}
-      <div className="flex flex-wrap items-center justify-end gap-3 pt-4 border-t border-slate-200 dark:border-slate-800">
-        <button
-          type="button"
-          onClick={onCancel}
-          disabled={saving}
-          className="h-10 px-4 border border-slate-200 dark:border-slate-700 rounded-md text-xs font-medium text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors cursor-pointer"
-        >
-          Cancel
-        </button>
+      <FormActionButtons
+        primaryText={initialData ? 'Update & Print' : 'Save & Print'}
+        primaryType="button"
+        primaryOnClick={() => handleSave(true, false)}
+        primaryDisabled={saving}
+        primaryLoading={saving}
 
-        <button
-          type="button"
-          onClick={() => handleSave(true, false)}
-          disabled={saving}
-          className="h-10 px-4 bg-indigo-600 hover:bg-indigo-700 text-white rounded-md text-xs font-medium flex items-center space-x-2 transition-colors shadow-xs cursor-pointer"
-        >
-          <Printer className="w-4 h-4" />
-          <span>Save & Print</span>
-        </button>
+        secondaryLeftText="Save & New"
+        secondaryLeftType="button"
+        secondaryLeftOnClick={() => handleSave(false, true)}
+        secondaryLeftDisabled={saving}
 
-        <button
-          type="button"
-          onClick={() => handleSave(false, false)}
-          disabled={saving}
-          className="h-10 px-5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-md text-xs font-semibold flex items-center space-x-2 transition-colors shadow-xs cursor-pointer"
-        >
-          <Save className="w-4 h-4" />
-          <span>{saving ? 'Saving...' : 'Save Delivery Challan'}</span>
-        </button>
-      </div>
+        secondaryRightText={initialData ? 'Update Challan' : 'Save Challan'}
+        secondaryRightType="button"
+        secondaryRightOnClick={() => handleSave(false, false)}
+        secondaryRightDisabled={saving}
+
+        discardText="Discard"
+        discardOnClick={onCancel}
+        discardDisabled={saving}
+      />
 
       {/* Stock Item Modal */}
       {itemModal.isOpen && (

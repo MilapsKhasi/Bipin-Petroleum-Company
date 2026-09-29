@@ -8,6 +8,7 @@ import StockForm from '../components/StockForm';
 import ConfirmDialog from '../components/ConfirmDialog';
 import EmptyState from '../components/EmptyState';
 import { supabase } from '../lib/supabase';
+import { toast } from '../utils/toast';
 
 const Stock = () => {
   const location = useLocation();
@@ -130,8 +131,15 @@ const Stock = () => {
 
   const confirmDelete = async () => {
     if (!deleteDialog.item) return;
-    await supabase.from('stock_items').update({ is_deleted: true }).eq('id', deleteDialog.item.id);
-    loadData(); if (selectedId === String(deleteDialog.item.id)) setSelectedId(null);
+    const itemName = deleteDialog.item.name;
+    const { error } = await supabase.from('stock_items').update({ is_deleted: true }).eq('id', deleteDialog.item.id);
+    if (!error) {
+      toast.success(`Stock item "${itemName}" deleted`);
+      loadData();
+      if (selectedId === String(deleteDialog.item.id)) setSelectedId(null);
+    } else {
+      toast.error('Failed to delete item: ' + error.message);
+    }
   };
 
   const selectedItem = items.find(i => String(i.id) === String(selectedId));
@@ -191,13 +199,54 @@ const Stock = () => {
         </div>
         <button
           onClick={() => { setEditingItem(null); setIsModalOpen(true); }}
-          className="w-full sm:w-auto bg-primary text-white px-5 py-2.5 rounded-md font-medium text-sm hover:bg-primary-dark flex items-center justify-center shadow-sm cursor-pointer"
+          className="w-full sm:w-auto bg-primary text-white px-4 py-2 rounded font-medium text-xs hover:bg-primary-dark active:scale-[0.98] flex items-center justify-center gap-1.5 shadow-sm transition-all duration-150 cursor-pointer"
         >
-          <Plus className="w-4 h-4 mr-2" /> New SKU Item
+          <Plus className="w-3.5 h-3.5" /> <span>New SKU Item</span>
         </button>
       </div>
 
-      {!loading && items.length === 0 ? (
+      {loading ? (
+        <div className="flex-1 flex flex-col lg:flex-row gap-6 overflow-hidden min-h-0">
+          <div className="w-full lg:w-80 flex flex-col space-y-3 shrink-0">
+            <div className="h-9 bg-slate-200 dark:bg-slate-800 rounded-md animate-pulse" />
+            {Array.from({ length: 5 }).map((_, idx) => (
+              <div key={idx} className="p-4 border border-slate-200 dark:border-slate-800 rounded-md bg-white dark:bg-slate-900 space-y-2 animate-pulse">
+                <div className="h-3.5 bg-slate-200 dark:bg-slate-800 rounded w-3/4" />
+                <div className="flex justify-between items-center pt-2">
+                  <div className="h-3 bg-slate-100 dark:bg-slate-800 rounded w-16" />
+                  <div className="h-4 bg-slate-200 dark:bg-slate-800 rounded w-12" />
+                </div>
+              </div>
+            ))}
+          </div>
+          <div className="flex-1 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-md p-6 space-y-6 hidden lg:flex flex-col">
+            <div className="flex justify-between items-center border-b border-slate-100 dark:border-slate-800 pb-4 animate-pulse">
+              <div className="flex items-center space-x-3">
+                <div className="w-12 h-12 rounded-xl bg-slate-200 dark:bg-slate-800" />
+                <div className="space-y-2">
+                  <div className="h-4 bg-slate-200 dark:bg-slate-800 rounded w-48" />
+                  <div className="h-3 bg-slate-100 dark:bg-slate-800 rounded w-24" />
+                </div>
+              </div>
+              <div className="h-8 bg-slate-200 dark:bg-slate-800 rounded w-28" />
+            </div>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 animate-pulse">
+              {Array.from({ length: 4 }).map((_, idx) => (
+                <div key={idx} className="p-4 rounded-xl border border-slate-200 dark:border-slate-800 space-y-2">
+                  <div className="h-3 bg-slate-100 dark:bg-slate-800 rounded w-20" />
+                  <div className="h-6 bg-slate-200 dark:bg-slate-800 rounded w-16" />
+                </div>
+              ))}
+            </div>
+            <div className="flex-1 border border-slate-200 dark:border-slate-800 rounded-md p-4 space-y-3 animate-pulse">
+              <div className="h-4 bg-slate-200 dark:bg-slate-800 rounded w-36 mb-4" />
+              {Array.from({ length: 4 }).map((_, idx) => (
+                <div key={idx} className="h-8 bg-slate-100 dark:bg-slate-800 rounded w-full" />
+              ))}
+            </div>
+          </div>
+        </div>
+      ) : items.length === 0 ? (
         <EmptyState 
           title="Inventory is Empty" 
           message="Take control of your warehouse! Register your stock items (SKUs) to track movements, quantities, and valuation." 
@@ -210,7 +259,7 @@ const Stock = () => {
             <div className={`w-full lg:w-80 flex flex-col space-y-4 flex-1 lg:flex-none min-h-0 lg:shrink-0 ${selectedId ? 'hidden lg:flex' : 'flex'}`}>
                 <div className="relative">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-300 w-4 h-4" />
-                <input type="text" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} placeholder="Filter items..." className="w-full pl-10 pr-4 py-2 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-md text-xs outline-none focus:border-slate-300 dark:focus:border-slate-600 shadow-sm text-slate-900 dark:text-slate-100" />
+                <input type="text" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} placeholder="Filter items..." className="w-full pl-10 pr-4 py-2 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-md text-xs outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 shadow-sm text-slate-900 dark:text-slate-100 transition-all" />
                 </div>
                 <div className="flex-1 overflow-y-auto min-h-0 space-y-2 pr-1 custom-scrollbar touch-pan-y">
                 {filteredItems.map((item) => {

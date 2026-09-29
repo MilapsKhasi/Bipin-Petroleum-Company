@@ -400,9 +400,9 @@ const Reports = () => {
           <button 
             onClick={() => setIsExportModalOpen(true)}
             disabled={reportTableData.length === 0}
-            className="w-full sm:w-auto px-4 py-2.5 bg-primary text-white font-medium text-sm hover:bg-primary-dark rounded-md shadow-sm transition-all flex items-center justify-center disabled:opacity-50 cursor-pointer"
+            className="w-full sm:w-auto px-4 py-2 bg-primary text-white font-medium text-xs hover:bg-primary-dark rounded shadow-sm transition-none flex items-center justify-center gap-1.5 disabled:opacity-50 cursor-pointer"
           >
-            <FileDown className="w-4 h-4 mr-2" /> Export Statement
+            <FileDown className="w-3.5 h-3.5" /> <span>Export Statement</span>
           </button>
         </div>
       </div>

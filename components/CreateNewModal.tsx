@@ -10,6 +10,7 @@ import BillForm from './BillForm';
 import PaymentVoucherModal from './PaymentVoucherModal';
 import PartyForm from './PartyForm';
 import StockForm from './StockForm';
+import { InvoicePrintModal } from './InvoicePrintModal';
 
 interface CreateNewModalProps {
   isOpen: boolean;
@@ -23,6 +24,8 @@ export const CreateNewModal: React.FC<CreateNewModalProps> = ({ isOpen, onClose 
   const [activeView, setActiveView] = useState<
     'list' | 'sales_invoice' | 'purchase_bill' | 'receive_payment' | 'make_payment' | 'customer' | 'vendor' | 'stock_item'
   >('list');
+  const [printModalInvoice, setPrintModalInvoice] = useState<any>(null);
+  const [printPureMode, setPrintPureMode] = useState<boolean>(false);
 
   const handleSelectOption = (type: string) => {
     switch (type) {
@@ -271,6 +274,11 @@ export const CreateNewModal: React.FC<CreateNewModalProps> = ({ isOpen, onClose 
             onSubmit={(inv, shouldPrint, isSaveAndNew) => {
               if (!isSaveAndNew) resetAll();
               else window.dispatchEvent(new Event('appSettingsChanged'));
+
+              if (shouldPrint && inv) {
+                setPrintPureMode(true);
+                setPrintModalInvoice(inv);
+              }
             }}
             onCancel={resetAll}
           />
@@ -329,6 +337,13 @@ export const CreateNewModal: React.FC<CreateNewModalProps> = ({ isOpen, onClose 
           />
         </Modal>
       )}
+
+      <InvoicePrintModal
+        isOpen={!!printModalInvoice}
+        onClose={() => setPrintModalInvoice(null)}
+        invoice={printModalInvoice}
+        purePrintMode={printPureMode}
+      />
     </>
   );
 };

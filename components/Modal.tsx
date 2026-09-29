@@ -95,14 +95,14 @@ const Modal: React.FC<ModalProps> = ({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-[500] flex items-center justify-center p-4">
+    <div className="fixed inset-0 z-[500] flex items-center justify-center p-3 sm:p-4 animate-in fade-in duration-150">
       <div 
-        className="absolute inset-0 bg-slate-900/30 dark:bg-slate-950/60" 
+        className="absolute inset-0 bg-slate-900/40 dark:bg-slate-950/60 backdrop-blur-xs transition-opacity" 
         onClick={() => !preventBackdropClose && onClose()} 
       />
       <div 
         ref={modalRef}
-        className={`relative bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-800 w-full ${maxWidth} flex flex-col overflow-hidden rounded-md max-h-[90vh]`}
+        className={`relative bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-800 w-full ${maxWidth} flex flex-col overflow-hidden rounded-md max-h-[90vh] shadow-2xl animate-in fade-in zoom-in-95 duration-150`}
       >
         <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shrink-0">
           <h3 className="text-[18px] font-medium text-slate-900 dark:text-slate-100 capitalize">{title}</h3>
@@ -110,9 +110,9 @@ const Modal: React.FC<ModalProps> = ({
             type="button" 
             aria-label="Close"
             onClick={onClose} 
-            className="p-1 text-slate-400 dark:text-slate-500 hover:text-slate-600 dark:hover:text-slate-300 transition-none"
+            className="p-1.5 text-slate-400 dark:text-slate-500 hover:text-slate-600 dark:hover:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 rounded transition-colors active:scale-95 cursor-pointer"
           >
-            <X className="w-5 h-5" />
+            <X className="w-4 h-4" />
           </button>
         </div>
         <div className="flex-1 overflow-y-auto bg-white dark:bg-slate-900 custom-scrollbar">

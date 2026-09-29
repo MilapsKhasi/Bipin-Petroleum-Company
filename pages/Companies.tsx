@@ -6,6 +6,7 @@ import Modal from '../components/Modal';
 import Logo from '../components/Logo';
 import ConfirmDialog from '../components/ConfirmDialog';
 import EmptyState from '../components/EmptyState';
+import FormActionButtons from '../components/FormActionButtons';
 import { supabase, getAuthUser } from '../lib/supabase';
 import { useCompany } from '../context/CompanyContext';
 import { getActiveLicense, DEFAULT_LICENSE_KEY, removeActiveLicense } from '../lib/licenseManager';
@@ -284,11 +285,25 @@ const Companies = () => {
                 setFormData({ ...formData, address: e.target.value })} rows={3} className="w-full px-4 py-3 border border-slate-200 rounded outline-none text-sm focus:border-slate-400 resize-none" placeholder="Enter complete office address..." />
             </div>
           </div>
-          <div className="flex items-center justify-end pt-4">
-            <button type="submit" disabled={creating} className="bg-primary text-white px-10 py-3 rounded-md font-medium text-sm hover:bg-primary-dark shadow-sm disabled:opacity-50 flex items-center justify-center capitalize w-full sm:w-auto">
-              {creating ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : editingCompany ? <Save className="w-4 h-4 mr-2" /> : <Plus className="w-4 h-4 mr-2" />}
-              {creating ? 'Processing...' : editingCompany ? 'Save Changes' : 'Save Workspace'}
-            </button>
+          <div className="pt-4">
+            <FormActionButtons
+              primaryText={creating ? 'Processing...' : editingCompany ? 'Save Changes' : 'Save Workspace'}
+              primaryType="submit"
+              primaryDisabled={creating}
+              primaryLoading={creating}
+
+              secondaryLeftText="Save & Continue"
+              secondaryLeftType="submit"
+              secondaryLeftDisabled={creating}
+
+              secondaryRightText="Save & Close"
+              secondaryRightType="submit"
+              secondaryRightDisabled={creating}
+
+              discardText="Discard"
+              discardOnClick={() => setIsModalOpen(false)}
+              discardDisabled={creating}
+            />
           </div>
         </form>
       </Modal>

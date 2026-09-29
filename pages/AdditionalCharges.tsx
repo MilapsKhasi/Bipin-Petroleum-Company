@@ -4,6 +4,9 @@ import { supabase } from '../lib/supabase';
 import { getActiveCompanyId, safeSupabaseSave, getSelectedLedgerIds, toggleSelectedLedgerId } from '../utils/helpers';
 import ConfirmDialog from '../components/ConfirmDialog';
 import EmptyState from '../components/EmptyState';
+import TableSkeleton from '../components/TableSkeleton';
+import FormActionButtons from '../components/FormActionButtons';
+import { toast } from '../utils/toast';
 
 const isGstLedger = (name: string) => {
   const upper = name.toUpperCase();
@@ -73,10 +76,14 @@ const AdditionalCharges = () => {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     const cid = getActiveCompanyId();
-    if (!cid) return alert("No active workspace selected.");
+    if (!cid) {
+      toast.error("No active workspace selected.");
+      return;
+    }
     
     if (isGstLedger(formData.name)) {
-      return alert("Additional Charges must never contain GST-related ledgers (CGST, SGST, IGST, or GST).");
+      toast.warning("Additional Charges must never contain GST-related ledgers (CGST, SGST, IGST, or GST).");
+      return;
     }
 
     setSaving(true);
@@ -100,6 +107,8 @@ const AdditionalCharges = () => {
         }
       }
 
+      toast.success(editingTax ? "Charge updated successfully." : "Charge created successfully.");
+
       if (!isSaveAndNew) {
         setIsModalOpen(false);
       } else {
@@ -108,7 +117,7 @@ const AdditionalCharges = () => {
       await loadData();
       window.dispatchEvent(new Event('appSettingsChanged'));
     } catch (err: any) {
-      alert("Error saving ledger: " + err.message);
+      toast.error("Error saving ledger: " + (err.message || 'Unknown error'));
     } finally {
       setSaving(false);
     }
@@ -120,17 +129,26 @@ const AdditionalCharges = () => {
         isOpen={deleteDialog.isOpen}
         onClose={() => setDeleteDialog({ isOpen: false, tax: null })}
         onConfirm={async () => {
+          try {
             const { error } = await supabase.from('duties_taxes').update({ is_deleted: true }).eq('id', deleteDialog.tax.id);
-            if (!error) await loadData();
+            if (!error) {
+              toast.success("Charge deleted successfully.");
+              await loadData();
+            } else {
+              toast.error("Failed to delete charge: " + error.message);
+            }
+          } catch (err: any) {
+            toast.error("Error deleting: " + (err.message || 'Unknown error'));
+          }
         }}
         title="Archive Charge/Deduction"
         message={`Are you sure you want to delete "${deleteDialog.tax?.name}"?`}
       />
 
       {isModalOpen && (
-        <div className="fixed inset-0 z-[500] flex items-center justify-center p-4">
-            <div className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm" onClick={() => setIsModalOpen(false)} />
-            <div className="relative bg-white dark:bg-slate-900 w-full max-w-[650px] border border-slate-300 dark:border-slate-800 overflow-hidden rounded-md flex flex-col max-h-[90vh]">
+        <div className="fixed inset-0 z-[500] flex items-center justify-center p-4 animate-in fade-in duration-150">
+            <div className="absolute inset-0 bg-slate-900/40 backdrop-blur-xs transition-opacity" onClick={() => setIsModalOpen(false)} />
+            <div className="relative bg-white dark:bg-slate-900 w-full max-w-[650px] border border-slate-300 dark:border-slate-800 overflow-hidden rounded-md flex flex-col max-h-[90vh] shadow-2xl animate-in fade-in zoom-in-95 duration-150">
                 <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shrink-0">
                     <h2 className="text-[18px] font-medium text-slate-900 dark:text-white capitalize">{editingTax ? "Edit Charge/Deduction" : "Create New Charge/Deduction"}</h2>
                     <button onClick={() => setIsModalOpen(false)} className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition-none">
@@ -188,26 +206,29 @@ const AdditionalCharges = () => {
                         </div>
                     </div>
 
-                    <div className="px-4 sm:px-8 py-4 border-t border-slate-200 dark:border-slate-800 flex flex-col sm:flex-row items-center justify-end gap-4 bg-white dark:bg-slate-900 shrink-0">
-                        <button type="button" onClick={() => setIsModalOpen(false)} className="text-[13px] text-slate-500 hover:text-slate-800 transition-none font-medium capitalize w-full sm:w-auto">Discard</button>
-                        <button 
-                            type="submit"
-                            onClick={() => setIsSaveAndNew(true)}
-                            disabled={saving}
-                            className="bg-emerald-600 text-white px-6 py-2.5 rounded font-medium text-[14px] hover:bg-emerald-700 transition-none flex items-center justify-center capitalize w-full sm:w-auto"
-                        >
-                            {saving && isSaveAndNew && <Loader2 className="w-4 h-4 animate-spin mr-2" />}
-                            Save & New
-                        </button>
-                        <button 
-                            type="submit"
-                            onClick={() => setIsSaveAndNew(false)}
-                            disabled={saving}
-                            className="bg-primary text-white px-8 py-2.5 rounded font-medium text-[14px] hover:bg-primary-dark transition-none flex items-center justify-center capitalize w-full sm:w-auto"
-                        >
-                            {saving && !isSaveAndNew && <Loader2 className="w-4 h-4 animate-spin mr-2" />}
-                            Save Charge
-                        </button>
+                    <div className="px-4 sm:px-8 py-4 border-t border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shrink-0">
+                        <FormActionButtons
+                            primaryText={editingTax ? 'Update Charge' : 'Save Charge'}
+                            primaryType="submit"
+                            primaryOnClick={() => setIsSaveAndNew(false)}
+                            primaryDisabled={saving}
+                            primaryLoading={saving && !isSaveAndNew}
+
+                            secondaryLeftText="Save & New"
+                            secondaryLeftType="submit"
+                            secondaryLeftOnClick={() => setIsSaveAndNew(true)}
+                            secondaryLeftDisabled={saving}
+                            secondaryLeftLoading={saving && isSaveAndNew}
+
+                            secondaryRightText="Save & Close"
+                            secondaryRightType="submit"
+                            secondaryRightOnClick={() => setIsSaveAndNew(false)}
+                            secondaryRightDisabled={saving}
+
+                            discardText="Discard"
+                            discardOnClick={() => setIsModalOpen(false)}
+                            discardDisabled={saving}
+                        />
                     </div>
                 </form>
             </div>
@@ -218,15 +239,19 @@ const AdditionalCharges = () => {
         <h1 className="text-[20px] font-medium text-slate-900 capitalize">Additional Charges</h1>
         {taxes.length > 0 && (
           <button 
+            type="button"
             onClick={() => { setEditingTax(null); setFormData(getInitialFormData()); setIsModalOpen(true); }} 
-            className="bg-primary text-white px-6 py-2 rounded-md font-medium text-sm hover:bg-primary-dark transition-none capitalize w-full sm:w-auto"
+            className="w-full sm:w-auto bg-primary text-white px-4 py-2 rounded font-medium text-xs hover:bg-primary-dark active:scale-[0.98] flex items-center justify-center gap-1.5 shadow-sm transition-all duration-150 cursor-pointer capitalize"
           >
-            New Charge
+            <Plus className="w-3.5 h-3.5" />
+            <span>New Charge</span>
           </button>
         )}
       </div>
 
-      {!loading && taxes.length === 0 ? (
+      {loading ? (
+        <TableSkeleton rows={5} columns={7} />
+      ) : taxes.length === 0 ? (
         <EmptyState 
           title="No Additional Charges" 
           message="Configure user-defined adjustments such as Labour, Freight, or Discounts to apply them on your invoices and bills." 
@@ -234,7 +259,7 @@ const AdditionalCharges = () => {
           onAction={() => { setEditingTax(null); setFormData(getInitialFormData()); setIsModalOpen(true); }} 
         />
       ) : (
-        <div className="border border-slate-200 rounded-md overflow-hidden bg-white overflow-x-auto">
+        <div className="border border-slate-200 rounded-md overflow-hidden bg-white overflow-x-auto shadow-sm">
             <table className="clean-table min-w-[600px]">
             <thead>
                 <tr>
@@ -248,18 +273,16 @@ const AdditionalCharges = () => {
                 </tr>
             </thead>
             <tbody>
-                {loading ? (
-                <tr><td colSpan={7} className="text-center py-20 text-slate-400">Loading charges...</td></tr>
-                ) : taxes.map((tax) => {
+                {taxes.map((tax) => {
                 const isSelected = selectedIds.includes(tax.id) || tax.is_default;
                 return (
-                    <tr key={tax.id} className="hover:bg-slate-50/50">
+                    <tr key={tax.id} className="hover:bg-slate-50/70 transition-colors">
                     <td className="text-center">
                         <button onClick={async () => {
                             const nextIds = toggleSelectedLedgerId(tax.id);
                             setSelectedIds(nextIds);
                             window.dispatchEvent(new Event('appSettingsChanged'));
-                        }} className={`w-4 h-4 rounded border ${isSelected ? 'bg-primary border-slate-900' : 'bg-white border-slate-300'} mx-auto transition-none`} />
+                        }} className={`w-4 h-4 rounded border ${isSelected ? 'bg-primary border-slate-900' : 'bg-white border-slate-300'} mx-auto transition-colors cursor-pointer`} />
                     </td>
                     <td className="font-medium text-slate-700">
                       <span>{tax.name}</span>
@@ -276,8 +299,8 @@ const AdditionalCharges = () => {
                     <td className="font-mono text-[13px]">{tax.calc_method === 'Percentage' ? `${tax.rate}%` : tax.fixed_amount.toFixed(2)}</td>
                     <td className="text-right">
                         <div className="flex justify-end space-x-2">
-                          <button onClick={() => { setEditingTax(tax); setFormData({ ...tax, applicable_to: tax.applicable_to || 'Both' }); setIsModalOpen(true); }} className="text-slate-400 hover:text-slate-900 transition-none"><Edit className="w-4 h-4" /></button>
-                          <button onClick={() => setDeleteDialog({ isOpen: true, tax })} className="text-slate-400 hover:text-red-500 transition-none"><Trash2 className="w-4 h-4" /></button>
+                          <button onClick={() => { setEditingTax(tax); setFormData({ ...tax, applicable_to: tax.applicable_to || 'Both' }); setIsModalOpen(true); }} className="text-slate-400 hover:text-slate-900 transition-colors p-1 rounded"><Edit className="w-4 h-4" /></button>
+                          <button onClick={() => setDeleteDialog({ isOpen: true, tax })} className="text-slate-400 hover:text-red-500 transition-colors p-1 rounded"><Trash2 className="w-4 h-4" /></button>
                         </div>
                     </td>
                     </tr>

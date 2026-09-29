@@ -5,6 +5,7 @@ import Modal from '../components/Modal';
 import BillForm from '../components/BillForm';
 import ConfirmDialog from '../components/ConfirmDialog';
 import { supabase } from '../lib/supabase';
+import { toast } from '../utils/toast';
 
 const Purchases = () => {
   const [bills, setBills] = useState<any[]>([]);
@@ -68,9 +69,17 @@ const Purchases = () => {
 
   const confirmDelete = async () => {
     if (!deleteDialog.bill) return;
-    const { error } = await supabase.from('purchase_bills').update({ is_deleted: true }).eq('id', deleteDialog.bill.id);
-    if (error) alert('Error deleting: ' + error.message);
-    else loadData();
+    try {
+      const { error } = await supabase.from('purchase_bills').update({ is_deleted: true }).eq('id', deleteDialog.bill.id);
+      if (error) {
+        toast.error('Error deleting: ' + error.message);
+      } else {
+        toast.success('Bill deleted successfully.');
+        loadData();
+      }
+    } catch (err: any) {
+      toast.error('Error deleting: ' + (err.message || 'Unknown error'));
+    }
   };
 
   const filtered = bills.filter(b => {
