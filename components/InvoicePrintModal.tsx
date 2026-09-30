@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useRef } from 'react';
+import React, { useEffect, useState, useRef, useMemo } from 'react';
 import { X, ZoomIn, ZoomOut, RotateCcw, Printer, Download, Save, Check, Loader2 } from 'lucide-react';
 import { toPng } from 'html-to-image';
 import { jsPDF } from 'jspdf';
@@ -69,6 +69,7 @@ export const InvoicePrintModal: React.FC<InvoicePrintModalProps> = ({
   const [zoomLevel, setZoomLevel] = useState<number>(100);
   const [margins, setMargins] = useState<'Auto' | 'None' | 'Minimum'>('Auto');
   const [paperSize, setPaperSize] = useState<'A4 ( default )' | 'Letter' | 'Legal'>('A4 ( default )');
+  const [taxDisplayMode, setTaxDisplayMode] = useState<'Auto' | 'CGST_SGST' | 'IGST'>('Auto');
   const [downloadingPdf, setDownloadingPdf] = useState(false);
 
   useEffect(() => {
@@ -134,13 +135,16 @@ export const InvoicePrintModal: React.FC<InvoicePrintModalProps> = ({
   const shipToAddress = customer?.shipping_address || customerAddress;
 
   // Invoice Details with fallbacks matching exact Screenshot (496)
+  const isPurchase = invoice?.type === 'Purchase' || (invoice?.vendor_name && !invoice?.customer_name);
+  const invoiceTitle = isPurchase ? 'Purchase Bill / Invoice' : 'Tax Invoice';
   const invoiceNo = invoice?.invoice_number || invoice?.bill_number || '2026-27-001';
   const invoiceDate = invoice?.date ? formatDate(invoice.date) : 'DD/MM/YY';
   const poNumber = payment?.po_number || invoice?.po_number || itemsRaw?.po_number || 'PO/001';
 
   // GST & Tax Calculations
   const gstType = itemsRaw?.gst_type || invoice?.gst_type || 'Intra-State';
-  const isInterState = gstType === 'Inter-State' || gstType === 'IGST';
+  const defaultIsInterState = gstType === 'Inter-State' || gstType === 'IGST';
+  const isInterState = taxDisplayMode === 'Auto' ? defaultIsInterState : (taxDisplayMode === 'IGST');
 
   let totalQty = 0;
   let totalAmount = 0;
@@ -152,7 +156,8 @@ export const InvoicePrintModal: React.FC<InvoicePrintModalProps> = ({
   const calculatedItems = lineItems.map((item: any, idx: number) => {
     const qty = parseFloat(item.qty || item.quantity) || 0;
     const rate = parseFloat(item.rate) || 0;
-    const taxRate = parseFloat(item.tax_rate || item.gst || item.tax) || 18;
+    const rawTax = item.tax_rate !== undefined ? item.tax_rate : (item.gst !== undefined ? item.gst : item.tax);
+    const taxRate = (rawTax !== undefined && rawTax !== '' && !isNaN(Number(rawTax))) ? parseFloat(rawTax) : 0;
     const amount = parseFloat(item.taxableAmount) || (qty * rate);
 
     let cgst = 0;
@@ -162,8 +167,8 @@ export const InvoicePrintModal: React.FC<InvoicePrintModalProps> = ({
     if (isInterState) {
       igst = amount * (taxRate / 100);
     } else {
-      cgst = amount * (taxRate / 2 / 100);
-      sgst = amount * (taxRate / 2 / 100);
+      cgst = amount * ((taxRate / 2) / 100);
+      sgst = amount * ((taxRate / 2) / 100);
     }
 
     const subtotal = amount + (isInterState ? igst : (cgst + sgst));
@@ -203,7 +208,52 @@ export const InvoicePrintModal: React.FC<InvoicePrintModalProps> = ({
 
   const taxableVal = invoice?.total_without_gst !== undefined ? parseFloat(invoice.total_without_gst) : totalAmount;
   const gstVal = invoice?.total_gst !== undefined ? parseFloat(invoice.total_gst) : (isInterState ? totalIgst : (totalCgst + totalSgst));
-  const grandTotalVal = invoice?.grand_total !== undefined ? parseFloat(invoice.grand_total) : (taxableVal + gstVal + sumAdditionalCharges);
+
+  const cgstDuty = dutiesAndTaxes.find((d: any) => (d.name || '').toUpperCase() === 'CGST');
+  const sgstDuty = dutiesAndTaxes.find((d: any) => (d.name || '').toUpperCase() === 'SGST');
+  const igstDuty = dutiesAndTaxes.find((d: any) => (d.name || '').toUpperCase() === 'IGST');
+
+  const cgstVal = (!isInterState && cgstDuty && parseFloat(cgstDuty.amount) > 0)
+    ? parseFloat(cgstDuty.amount)
+    : (totalCgst > 0 ? totalCgst : (!isInterState ? gstVal / 2 : 0));
+  const sgstVal = (!isInterState && sgstDuty && parseFloat(sgstDuty.amount) > 0)
+    ? parseFloat(sgstDuty.amount)
+    : (totalSgst > 0 ? totalSgst : (!isInterState ? gstVal / 2 : 0));
+  const igstVal = (isInterState && igstDuty && parseFloat(igstDuty.amount) > 0)
+    ? parseFloat(igstDuty.amount)
+    : (totalIgst > 0 ? totalIgst : (isInterState ? gstVal : 0));
+
+  const currentTotalBeforeRound = taxableVal + (isInterState ? igstVal : (cgstVal + sgstVal)) + sumAdditionalCharges;
+
+  let roundOffVal = 0;
+  if (invoice?.round_off !== undefined && invoice?.round_off !== null && !isNaN(Number(invoice.round_off))) {
+    roundOffVal = parseFloat(invoice.round_off);
+  } else if (invoice?.items_raw?.round_off !== undefined && invoice?.items_raw?.round_off !== null && !isNaN(Number(invoice.items_raw.round_off))) {
+    roundOffVal = parseFloat(invoice.items_raw.round_off);
+  } else if (invoice?.grand_total !== undefined && invoice?.grand_total !== null && Number(invoice.grand_total) > 0) {
+    roundOffVal = parseFloat((parseFloat(invoice.grand_total) - currentTotalBeforeRound).toFixed(2));
+  } else {
+    roundOffVal = parseFloat((Math.round(currentTotalBeforeRound) - currentTotalBeforeRound).toFixed(2));
+  }
+
+  const grandTotalVal = invoice?.grand_total !== undefined && invoice.grand_total !== null && Number(invoice.grand_total) > 0 
+    ? parseFloat(invoice.grand_total) 
+    : parseFloat((currentTotalBeforeRound + roundOffVal).toFixed(2));
+
+  const hsnSummary = useMemo(() => {
+    const map = new Map<string, { hsn: string; taxable: number; cgst: number; sgst: number; igst: number; totalTax: number; taxRate: number }>();
+    calculatedItems.forEach((it: any) => {
+      const hsnKey = (it.hsn || 'N/A').trim();
+      const existing = map.get(hsnKey) || { hsn: hsnKey, taxable: 0, cgst: 0, sgst: 0, igst: 0, totalTax: 0, taxRate: it.taxRate };
+      existing.taxable += it.amount;
+      existing.cgst += it.cgst;
+      existing.sgst += it.sgst;
+      existing.igst += it.igst;
+      existing.totalTax += (isInterState ? it.igst : (it.cgst + it.sgst));
+      map.set(hsnKey, existing);
+    });
+    return Array.from(map.values());
+  }, [calculatedItems, isInterState]);
 
   const bankName = company?.bank_name || 'Navanagar Corporetive Bank LTD';
   const bankHolder = company?.account_holder || 'Bipin Petroleum Co.';
@@ -435,13 +485,13 @@ export const InvoicePrintModal: React.FC<InvoicePrintModalProps> = ({
 
                       {/* Right: Tax Invoice Metadata */}
                       <div className="space-y-1.5 text-right pl-4">
-                        <h2 className="text-[18px] font-bold text-slate-900 mb-2">Tax Invoice</h2>
+                        <h2 className="text-[18px] font-bold text-slate-900 mb-2">{invoiceTitle}</h2>
                         <div className="flex justify-between text-[11px]">
-                          <span className="text-slate-500">Invoice Number</span>
+                          <span className="text-slate-500">{isPurchase ? 'Bill / Invoice Number' : 'Invoice Number'}</span>
                           <span className="font-mono font-medium text-slate-900">{invoiceNo}</span>
                         </div>
                         <div className="flex justify-between text-[11px]">
-                          <span className="text-slate-500">Invoice Date</span>
+                          <span className="text-slate-500">{isPurchase ? 'Bill Date' : 'Invoice Date'}</span>
                           <span className="font-medium text-slate-900">{invoiceDate}</span>
                         </div>
                         <div className="flex justify-between text-[11px]">
@@ -456,7 +506,7 @@ export const InvoicePrintModal: React.FC<InvoicePrintModalProps> = ({
                       {/* Billed To */}
                       <div className="space-y-1 text-[11px]">
                         <div className="flex justify-between">
-                          <span className="text-slate-500">Billed to</span>
+                          <span className="text-slate-500">{isPurchase ? 'Supplier / Vendor' : 'Billed to'}</span>
                           <span className="font-bold text-slate-900">{customerName}</span>
                         </div>
                         <div className="flex justify-between">
@@ -487,21 +537,35 @@ export const InvoicePrintModal: React.FC<InvoicePrintModalProps> = ({
                     </div>
 
                     {/* 3. Items Table Section with fixed height and fixed Total row */}
-                    <div className="mt-3 min-h-[400px] flex flex-col justify-between border-b border-slate-200">
+                    <div className="mt-3 min-h-[380px] flex flex-col justify-between border-b border-slate-200">
                       <div>
                         <table className="w-full border-collapse text-[10.5px] table-fixed">
-                          <colgroup>
-                            <col style={{ width: '36px' }} />
-                            <col />
-                            <col style={{ width: '64px' }} />
-                            <col style={{ width: '44px' }} />
-                            <col style={{ width: '68px' }} />
-                            <col style={{ width: '76px' }} />
-                            <col style={{ width: '48px' }} />
-                            <col style={{ width: '64px' }} />
-                            <col style={{ width: '64px' }} />
-                            <col style={{ width: '80px' }} />
-                          </colgroup>
+                          {isInterState ? (
+                            <colgroup>
+                              <col style={{ width: '36px' }} />
+                              <col />
+                              <col style={{ width: '64px' }} />
+                              <col style={{ width: '44px' }} />
+                              <col style={{ width: '68px' }} />
+                              <col style={{ width: '76px' }} />
+                              <col style={{ width: '48px' }} />
+                              <col style={{ width: '128px' }} />
+                              <col style={{ width: '80px' }} />
+                            </colgroup>
+                          ) : (
+                            <colgroup>
+                              <col style={{ width: '36px' }} />
+                              <col />
+                              <col style={{ width: '64px' }} />
+                              <col style={{ width: '44px' }} />
+                              <col style={{ width: '68px' }} />
+                              <col style={{ width: '76px' }} />
+                              <col style={{ width: '48px' }} />
+                              <col style={{ width: '64px' }} />
+                              <col style={{ width: '64px' }} />
+                              <col style={{ width: '80px' }} />
+                            </colgroup>
+                          )}
                           <thead>
                             <tr className="bg-[#0f3460] text-white font-semibold">
                               <th className="py-1.5 px-2 text-left">Sr</th>
@@ -511,8 +575,14 @@ export const InvoicePrintModal: React.FC<InvoicePrintModalProps> = ({
                               <th className="py-1.5 px-2 text-right">Rate</th>
                               <th className="py-1.5 px-2 text-right">Amount</th>
                               <th className="py-1.5 px-2 text-center">Tax %</th>
-                              <th className="py-1.5 px-2 text-right">CGST</th>
-                              <th className="py-1.5 px-2 text-right">SGST</th>
+                              {isInterState ? (
+                                <th className="py-1.5 px-2 text-right">IGST</th>
+                              ) : (
+                                <>
+                                  <th className="py-1.5 px-2 text-right">CGST</th>
+                                  <th className="py-1.5 px-2 text-right">SGST</th>
+                                </>
+                              )}
                               <th className="py-1.5 px-2 text-right">Subtotal</th>
                             </tr>
                           </thead>
@@ -526,8 +596,14 @@ export const InvoicePrintModal: React.FC<InvoicePrintModalProps> = ({
                                 <td className="py-1.5 px-2 text-right font-mono text-slate-700">{item.rate.toFixed(2)}</td>
                                 <td className="py-1.5 px-2 text-right font-mono text-slate-900">{item.amount.toFixed(2)}</td>
                                 <td className="py-1.5 px-2 text-center font-mono text-slate-600">{item.taxRate}%</td>
-                                <td className="py-1.5 px-2 text-right font-mono text-slate-700">{item.cgst.toFixed(2)}</td>
-                                <td className="py-1.5 px-2 text-right font-mono text-slate-700">{item.sgst.toFixed(2)}</td>
+                                {isInterState ? (
+                                  <td className="py-1.5 px-2 text-right font-mono text-slate-700">{item.igst.toFixed(2)}</td>
+                                ) : (
+                                  <>
+                                    <td className="py-1.5 px-2 text-right font-mono text-slate-700">{item.cgst.toFixed(2)}</td>
+                                    <td className="py-1.5 px-2 text-right font-mono text-slate-700">{item.sgst.toFixed(2)}</td>
+                                  </>
+                                )}
                                 <td className="py-1.5 px-2 text-right font-mono font-medium text-slate-900">{item.subtotal.toFixed(2)}</td>
                               </tr>
                             ))}
@@ -538,18 +614,32 @@ export const InvoicePrintModal: React.FC<InvoicePrintModalProps> = ({
                       {/* Total amount's whole section fixed directly above Grand Total in words */}
                       <div className="w-full border-t-2 border-slate-300 font-bold bg-slate-50/70 shrink-0">
                         <table className="w-full border-collapse text-[10.5px] table-fixed">
-                          <colgroup>
-                            <col style={{ width: '36px' }} />
-                            <col />
-                            <col style={{ width: '64px' }} />
-                            <col style={{ width: '44px' }} />
-                            <col style={{ width: '68px' }} />
-                            <col style={{ width: '76px' }} />
-                            <col style={{ width: '48px' }} />
-                            <col style={{ width: '64px' }} />
-                            <col style={{ width: '64px' }} />
-                            <col style={{ width: '80px' }} />
-                          </colgroup>
+                          {isInterState ? (
+                            <colgroup>
+                              <col style={{ width: '36px' }} />
+                              <col />
+                              <col style={{ width: '64px' }} />
+                              <col style={{ width: '44px' }} />
+                              <col style={{ width: '68px' }} />
+                              <col style={{ width: '76px' }} />
+                              <col style={{ width: '48px' }} />
+                              <col style={{ width: '128px' }} />
+                              <col style={{ width: '80px' }} />
+                            </colgroup>
+                          ) : (
+                            <colgroup>
+                              <col style={{ width: '36px' }} />
+                              <col />
+                              <col style={{ width: '64px' }} />
+                              <col style={{ width: '44px' }} />
+                              <col style={{ width: '68px' }} />
+                              <col style={{ width: '76px' }} />
+                              <col style={{ width: '48px' }} />
+                              <col style={{ width: '64px' }} />
+                              <col style={{ width: '64px' }} />
+                              <col style={{ width: '80px' }} />
+                            </colgroup>
+                          )}
                           <tbody>
                             <tr>
                               <td className="py-2 px-2 text-slate-800 text-left font-bold">Total</td>
@@ -559,8 +649,14 @@ export const InvoicePrintModal: React.FC<InvoicePrintModalProps> = ({
                               <td className="py-2 px-2"></td>
                               <td className="py-2 px-2 text-right font-mono">{totalAmount.toFixed(2)}</td>
                               <td className="py-2 px-2"></td>
-                              <td className="py-2 px-2 text-right font-mono">{totalCgst.toFixed(2)}</td>
-                              <td className="py-2 px-2 text-right font-mono">{totalSgst.toFixed(2)}</td>
+                              {isInterState ? (
+                                <td className="py-2 px-2 text-right font-mono">{totalIgst.toFixed(2)}</td>
+                              ) : (
+                                <>
+                                  <td className="py-2 px-2 text-right font-mono">{totalCgst.toFixed(2)}</td>
+                                  <td className="py-2 px-2 text-right font-mono">{totalSgst.toFixed(2)}</td>
+                                </>
+                              )}
                               <td className="py-2 px-2 text-right font-mono">{totalSubtotal.toFixed(2)}</td>
                             </tr>
                           </tbody>
@@ -573,28 +669,87 @@ export const InvoicePrintModal: React.FC<InvoicePrintModalProps> = ({
                   <div className="mt-auto pt-4 space-y-4">
                     {/* Grand Total in words & Calculations */}
                     <div className="grid grid-cols-2 gap-6 pt-2">
-                      {/* Left: In words */}
-                      <div className="space-y-1">
-                        <div className="text-[11px] italic text-slate-500">Grand Total in words</div>
-                        <div className="text-[11.5px] font-normal text-slate-800 leading-relaxed">
-                          {numberToWords(grandTotalVal)}
+                      {/* Left: In words & Tax Summary */}
+                      <div className="space-y-3">
+                        <div className="space-y-1">
+                          <div className="text-[11px] italic text-slate-500">Grand Total in words</div>
+                          <div className="text-[11.5px] font-medium text-slate-800 leading-relaxed">
+                            {numberToWords(grandTotalVal)}
+                          </div>
                         </div>
+
+                        {/* HSN Tax Summary Table */}
+                        {hsnSummary.length > 0 && (
+                          <div className="pt-1">
+                            <div className="text-[10px] font-semibold text-slate-600 uppercase tracking-tight mb-1">
+                              Tax Summary ({isInterState ? 'IGST' : 'CGST / SGST'})
+                            </div>
+                            <table className="w-full text-[9px] border border-slate-200 border-collapse">
+                              <thead>
+                                <tr className="bg-slate-100 text-slate-700 font-semibold text-left">
+                                  <th className="p-1 border-r border-slate-200">HSN/SAC</th>
+                                  <th className="p-1 text-right border-r border-slate-200">Taxable</th>
+                                  {isInterState ? (
+                                    <th className="p-1 text-right border-r border-slate-200">IGST (Rate/Amt)</th>
+                                  ) : (
+                                    <>
+                                      <th className="p-1 text-right border-r border-slate-200">CGST (Rate/Amt)</th>
+                                      <th className="p-1 text-right border-r border-slate-200">SGST (Rate/Amt)</th>
+                                    </>
+                                  )}
+                                  <th className="p-1 text-right">Tax Amt</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {hsnSummary.map((h, i) => (
+                                  <tr key={i} className="border-t border-slate-100">
+                                    <td className="p-1 font-mono border-r border-slate-200">{h.hsn}</td>
+                                    <td className="p-1 font-mono text-right border-r border-slate-200">{h.taxable.toFixed(2)}</td>
+                                    {isInterState ? (
+                                      <td className="p-1 font-mono text-right border-r border-slate-200">{h.taxRate}% | {h.igst.toFixed(2)}</td>
+                                    ) : (
+                                      <>
+                                        <td className="p-1 font-mono text-right border-r border-slate-200">{(h.taxRate / 2)}% | {h.cgst.toFixed(2)}</td>
+                                        <td className="p-1 font-mono text-right border-r border-slate-200">{(h.taxRate / 2)}% | {h.sgst.toFixed(2)}</td>
+                                      </>
+                                    )}
+                                    <td className="p-1 font-mono text-right font-medium text-slate-800">{h.totalTax.toFixed(2)}</td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </div>
+                        )}
                       </div>
 
-                      {/* Right: Amounts & Additional Charges */}
+                      {/* Right: Amounts, CGST/SGST Breakdown, Additional Charges & Round Off */}
                       <div className="space-y-1.5 text-[11px]">
                         <div className="flex justify-between">
                           <span className="text-slate-600">Taxable Amount</span>
                           <span className="font-mono text-slate-900">{taxableVal.toFixed(2)}</span>
                         </div>
-                        <div className="flex justify-between">
-                          <span className="text-slate-600">GST Amount</span>
-                          <span className="font-mono text-slate-900">{gstVal.toFixed(2)}</span>
-                        </div>
+
+                        {isInterState ? (
+                          <div className="flex justify-between">
+                            <span className="text-slate-600">Integrated Tax (IGST)</span>
+                            <span className="font-mono text-slate-900">{igstVal.toFixed(2)}</span>
+                          </div>
+                        ) : (
+                          <>
+                            <div className="flex justify-between">
+                              <span className="text-slate-600">Central Tax (CGST)</span>
+                              <span className="font-mono text-slate-900">{cgstVal.toFixed(2)}</span>
+                            </div>
+                            <div className="flex justify-between">
+                              <span className="text-slate-600">State Tax (SGST)</span>
+                              <span className="font-mono text-slate-900">{sgstVal.toFixed(2)}</span>
+                            </div>
+                          </>
+                        )}
 
                         {appliedCharges.length > 0 && (
-                          <div className="pt-1 space-y-1">
-                            <div className="text-[10.5px] font-medium text-slate-500">Additional Charges</div>
+                          <div className="pt-1 space-y-1 border-t border-slate-100">
+                            <div className="text-[10px] font-medium text-slate-500 uppercase">Additional Charges</div>
                             {appliedCharges.map((ch: any, idx: number) => (
                               <div key={idx} className="flex justify-between text-slate-700">
                                 <span>{ch.name}</span>
@@ -604,7 +759,14 @@ export const InvoicePrintModal: React.FC<InvoicePrintModalProps> = ({
                           </div>
                         )}
 
-                        <div className="border-t border-slate-300 pt-1 flex justify-between font-bold text-[12px] text-slate-900">
+                        <div className="flex justify-between text-slate-700 pt-0.5 border-t border-slate-100">
+                          <span className="text-slate-600">Round Off</span>
+                          <span className="font-mono text-slate-900">
+                            {roundOffVal > 0 ? `+${roundOffVal.toFixed(2)}` : (roundOffVal < 0 ? roundOffVal.toFixed(2) : '0.00')}
+                          </span>
+                        </div>
+
+                        <div className="border-t-2 border-slate-300 pt-1.5 flex justify-between font-bold text-[12px] text-slate-900">
                           <span>Grand Total</span>
                           <span className="font-mono">{grandTotalVal.toFixed(2)}</span>
                         </div>
@@ -660,6 +822,20 @@ export const InvoicePrintModal: React.FC<InvoicePrintModalProps> = ({
           {/* Right Column: Options & Action Buttons */}
           <div className="w-full md:w-80 border-t md:border-t-0 md:border-l border-slate-200 dark:border-slate-800 p-6 flex flex-col justify-between bg-white dark:bg-slate-900 shrink-0">
             <div className="space-y-6">
+              {/* Tax / GST Format Dropdown */}
+              <div className="space-y-2">
+                <label className="text-xs font-medium text-slate-800 dark:text-slate-200 block">GST / Tax Format</label>
+                <select
+                  value={taxDisplayMode}
+                  onChange={(e) => setTaxDisplayMode(e.target.value as any)}
+                  className="w-full px-4 py-2 border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-white rounded outline-none text-xs cursor-pointer"
+                >
+                  <option value="Auto">Auto (from Invoice)</option>
+                  <option value="CGST_SGST">SGST / CGST Format (Intra-State)</option>
+                  <option value="IGST">IGST Format (Inter-State)</option>
+                </select>
+              </div>
+
               {/* Margins Dropdown */}
               <div className="space-y-2">
                 <label className="text-xs font-medium text-slate-800 dark:text-slate-200 block">Margins</label>

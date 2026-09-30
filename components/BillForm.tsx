@@ -12,6 +12,7 @@ import { recordActivity } from '../utils/activityTracker';
 import FormActionButtons from './FormActionButtons';
 import { useKeyboardShortcuts } from '../utils/shortcutManager';
 import { toast } from '../utils/toast';
+import { InvoicePrintModal } from './InvoicePrintModal';
 
 interface BillFormProps {
   initialData?: any;
@@ -36,6 +37,7 @@ const BillForm: React.FC<BillFormProps> = ({ initialData, onSubmit, onCancel, fo
     total_without_gst: 0, 
     total_gst: 0, 
     duties_and_taxes: [], 
+    auto_round_off: true,
     round_off: 0, 
     grand_total: 0, 
     status: 'Pending',
@@ -155,6 +157,7 @@ const BillForm: React.FC<BillFormProps> = ({ initialData, onSubmit, onCancel, fo
   const [vendorModal, setVendorModal] = useState({ isOpen: false, initialData: null, prefilledName: '' });
   const [itemModal, setItemModal] = useState<{ isOpen: boolean; rowIdx: number | null }>({ isOpen: false, rowIdx: null });
   const [showPaymentModal, setShowPaymentModal] = useState(false);
+  const [showPrintModal, setShowPrintModal] = useState(false);
 
   const parseNumber = (val: string) => {
     if (!val) return 0;
@@ -282,10 +285,18 @@ const BillForm: React.FC<BillFormProps> = ({ initialData, onSubmit, onCancel, fo
       return { ...d, amount: calcAmt };
     });
 
-    const rounded = parseFloat(runningTotal.toFixed(2));
-    const ro = 0; // Removing automatic rounding as per "exact logic" request
+    const rounded = Math.round(runningTotal);
+    const ro = parseFloat((rounded - runningTotal).toFixed(2));
+    const grandTotal = rounded;
 
-    return { ...state, total_without_gst: parseFloat(taxable.toFixed(2)), total_gst: parseFloat(gst.toFixed(2)), duties_and_taxes: updatedDuties, round_off: ro, grand_total: rounded };
+    return { 
+      ...state, 
+      total_without_gst: parseFloat(taxable.toFixed(2)), 
+      total_gst: parseFloat(gst.toFixed(2)), 
+      duties_and_taxes: updatedDuties, 
+      round_off: ro, 
+      grand_total: grandTotal 
+    };
   };
 
   const loadDependencies = async () => {
@@ -460,7 +471,8 @@ const BillForm: React.FC<BillFormProps> = ({ initialData, onSubmit, onCancel, fo
               line_items: formData.items,
               duties_and_taxes: formData.duties_and_taxes,
               gst_type: formData.gst_type,
-              payment_details: formData.payment_details
+              payment_details: formData.payment_details,
+              round_off: formData.round_off
           }
       };
       
@@ -671,6 +683,19 @@ const BillForm: React.FC<BillFormProps> = ({ initialData, onSubmit, onCancel, fo
                             />
                         </div>
                     ))}
+                    <div className="flex items-center justify-between w-full max-w-sm text-[14px]">
+                        <span className="text-slate-500 font-bold uppercase tracking-tight pr-4">Round Off</span>
+                        <input 
+                          type="text" 
+                          value={
+                            formData.round_off === 0 
+                              ? '0.00' 
+                              : (formData.round_off > 0 ? `+${Number(formData.round_off).toFixed(2)}` : Number(formData.round_off).toFixed(2))
+                          } 
+                          readOnly
+                          className="px-4 py-2 border border-slate-200 dark:border-slate-700 bg-slate-100 dark:bg-slate-800 text-slate-500 cursor-not-allowed rounded outline-none text-[14px] font-mono font-bold text-right w-40 sm:w-48" 
+                        />
+                    </div>
                     <div className="flex items-center justify-between w-full max-w-sm text-[14px] border-t border-slate-100 dark:border-slate-800 pt-5">
                         <span className="text-slate-900 dark:text-slate-100 font-bold uppercase text-right pr-4 tracking-tighter">Net Total Bill</span>
                         <span className="font-mono font-bold text-[20px] sm:text-[24px] text-link">{formatCurrency(formData.grand_total)}</span>
@@ -692,9 +717,9 @@ const BillForm: React.FC<BillFormProps> = ({ initialData, onSubmit, onCancel, fo
           secondaryLeftDisabled={loading}
           secondaryLeftLoading={loading && isSaveAndNew}
 
-          secondaryRightText="Save & Close"
-          secondaryRightType="submit"
-          secondaryRightOnClick={() => setIsSaveAndNew(false)}
+          secondaryRightText="Print Preview"
+          secondaryRightType="button"
+          secondaryRightOnClick={() => setShowPrintModal(true)}
           secondaryRightDisabled={loading}
 
           discardText="Discard"
@@ -702,6 +727,25 @@ const BillForm: React.FC<BillFormProps> = ({ initialData, onSubmit, onCancel, fo
           discardDisabled={loading}
         />
       </form>
+
+      <InvoicePrintModal
+        isOpen={showPrintModal}
+        onClose={() => setShowPrintModal(false)}
+        invoice={{
+          ...formData,
+          type: 'Purchase',
+          vendor_name: formData.vendor_name,
+          customer_name: formData.vendor_name,
+          bill_number: formData.bill_number || 'DRAFT',
+          items: formData.items,
+          items_raw: {
+            line_items: formData.items,
+            duties_and_taxes: formData.duties_and_taxes,
+            gst_type: formData.gst_type,
+            round_off: formData.round_off
+          }
+        }}
+      />
     </div>
   );
 };

@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { useLocation } from 'react-router-dom';
-import { Search, Loader2, Edit, Trash2, Plus, ShoppingBag } from 'lucide-react';
+import { Search, Loader2, Edit, Trash2, Plus, ShoppingBag, Printer } from 'lucide-react';
 import { formatDate, formatCurrency, getActiveCompanyId, normalizeBill, unsyncTransactionFromCashbook } from '../utils/helpers';
 import Modal from '../components/Modal';
 import BillForm from '../components/BillForm';
@@ -12,6 +12,7 @@ import EmptyState from '../components/EmptyState';
 import { supabase } from '../lib/supabase';
 import TableSkeleton from '../components/TableSkeleton';
 import { toast } from '../utils/toast';
+import { InvoicePrintModal } from '../components/InvoicePrintModal';
 
 const Bills = () => {
   const location = useLocation();
@@ -20,6 +21,7 @@ const Bills = () => {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isExportModalOpen, setIsExportModalOpen] = useState(false);
   const [editingBill, setEditingBill] = useState<any | null>(null);
+  const [printModalBill, setPrintModalBill] = useState<any | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [highlightedId, setHighlightedId] = useState<string | null>(null);
   const [dateRange, setDateRange] = useState<{ startDate: string | null, endDate: string | null }>({ startDate: null, endDate: null });
@@ -339,6 +341,9 @@ const Bills = () => {
                       <td className="py-3 px-4 text-right font-mono tabular-nums font-bold text-slate-900 dark:text-white">{formatCurrency(b.grand_total)}</td>
                       <td className="py-3 px-4 text-center" onClick={(e) => e.stopPropagation()}>
                         <div className="flex items-center justify-center space-x-1">
+                          <button onClick={() => setPrintModalBill(b)} className="p-1 text-slate-400 hover:text-red-600 dark:hover:text-red-400 rounded transition-colors" title="Print Bill">
+                            <Printer className="w-3.5 h-3.5" />
+                          </button>
                           <button onClick={() => { setEditingBill(b); setIsModalOpen(true); }} className="p-1 text-slate-400 hover:text-primary rounded transition-colors" title="Edit Bill">
                             <Edit className="w-3.5 h-3.5" />
                           </button>
@@ -355,6 +360,12 @@ const Bills = () => {
           </div>
         )}
       </div>
+
+      <InvoicePrintModal
+        isOpen={!!printModalBill}
+        onClose={() => setPrintModalBill(null)}
+        invoice={printModalBill}
+      />
     </div>
   );
 };
