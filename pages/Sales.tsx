@@ -56,7 +56,7 @@ const Sales = () => {
     }
   }, [loading, invoices, location.state]);
   
-  const [headerFocusIdx, setHeaderFocusIdx] = useState<number | null>(0); 
+  const [headerFocusIdx, setHeaderFocusIdx] = useState<number | null>(null); 
   const [selectedRowIdx, setSelectedRowIdx] = useState<number | null>(null);
   const [lastShiftNTime, setLastShiftNTime] = useState<number>(0);
 

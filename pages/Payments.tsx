@@ -207,32 +207,30 @@ const Payments: React.FC<PaymentsProps> = ({ typeFilter }) => {
       let receipts: Voucher[] = [];
       let payments: Voucher[] = [];
 
-      let receiptsQuery = supabase
-        .from('sales_invoices')
-        .select('*')
-        .eq('company_id', cid)
-        .eq('is_deleted', false);
-
-      let paymentsQuery = supabase
-        .from('purchase_bills')
-        .select('*')
-        .eq('company_id', cid)
-        .eq('is_deleted', false);
-
-      if (dateRange.startDate && dateRange.endDate) {
-        receiptsQuery = receiptsQuery.gte('date', dateRange.startDate).lte('date', dateRange.endDate);
-        paymentsQuery = paymentsQuery.gte('date', dateRange.startDate).lte('date', dateRange.endDate);
-      }
-
-      const [{ data: receiptsData }, { data: paymentsData }] = await Promise.all([
-        receiptsQuery,
-        paymentsQuery
+      // Fetch all bills and sales across all dates for the company
+      // This ensures we have ALL payment vouchers regardless of which month the payment was settled in
+      const [{ data: allSalesRaw }, { data: allBillsRaw }] = await Promise.all([
+        supabase.from('sales_invoices').select('*').eq('company_id', cid).eq('is_deleted', false),
+        supabase.from('purchase_bills').select('*').eq('company_id', cid).eq('is_deleted', false)
       ]);
 
-      // Calculate Total Receivables and Payables
+      const inDateRange = (itemDate: string) => {
+        if (!dateRange.startDate || !dateRange.endDate) return true;
+        if (!itemDate) return false;
+        const d = String(itemDate).substring(0, 10);
+        return d >= dateRange.startDate && d <= dateRange.endDate;
+      };
+
+      const receiptsData = (allSalesRaw || []).filter((s: any) => inDateRange(s.date));
+      const paymentsData = (allBillsRaw || []).filter((b: any) => inDateRange(b.date));
+
+      // Calculate Total Receivables and Payables using all vouchers across all dates
+      const allNormalizedBills = (allBillsRaw || []).map((b: any) => normalizeBill(b)).filter(Boolean);
+      const allNormalizedSales = (allSalesRaw || []).map((s: any) => normalizeBill(s)).filter(Boolean);
+
       const allPaymentVouchers = [
-        ...(paymentsData || []).map((b: any) => normalizeBill(b)).filter((b: any) => b?.items_raw?.is_payment_voucher === true),
-        ...(receiptsData || []).map((s: any) => normalizeBill(s)).filter((s: any) => s?.items_raw?.is_payment_voucher === true)
+        ...allNormalizedBills.filter((b: any) => b?.items_raw?.is_payment_voucher === true),
+        ...allNormalizedSales.filter((s: any) => s?.items_raw?.is_payment_voucher === true)
       ];
 
       const actualSales = (receiptsData || []).map((s: any) => normalizeBill(s)).filter((s: any) => s && !s?.items_raw?.is_payment_voucher);
@@ -240,14 +238,16 @@ const Payments: React.FC<PaymentsProps> = ({ typeFilter }) => {
 
       const getInvoiceOutstanding = (inv: any, isSale: boolean) => {
         if (inv.status === 'Paid') return 0;
+        const invIdStr = String(inv.id);
         const linkedVouchers = allPaymentVouchers.filter(v => {
-          const isCorrectType = isSale ? (v.customer_name || v.type === 'Sale') : (v.vendor_name || v.type === 'Purchase');
-          return isCorrectType && v.items_raw?.linked_bills?.includes(inv.id);
+          const linkedBills = v.items_raw?.linked_bills || v.items?.linked_bills || [];
+          return linkedBills.includes(inv.id) || linkedBills.includes(invIdStr);
         });
         const totalPaidOnInv = linkedVouchers.reduce((sum, v) => {
-          const pDetails = v.items_raw?.payment_details;
+          const pDetails = v.items_raw?.payment_details || v.items?.payment_details;
           const pArray = Array.isArray(pDetails) ? pDetails : (pDetails ? [pDetails] : []);
-          return sum + pArray.reduce((s: number, p: any) => s + (Number(p.payment_amount) || 0), 0);
+          const amt = pArray.reduce((s: number, p: any) => s + (Number(p.payment_amount) || 0), 0);
+          return sum + (amt > 0 ? amt : (Number(v.grand_total) || 0));
         }, 0);
         return Math.max(0, Number(inv.grand_total || 0) - totalPaidOnInv);
       };

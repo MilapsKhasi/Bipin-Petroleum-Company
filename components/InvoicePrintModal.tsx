@@ -240,21 +240,6 @@ export const InvoicePrintModal: React.FC<InvoicePrintModalProps> = ({
     ? parseFloat(invoice.grand_total) 
     : parseFloat((currentTotalBeforeRound + roundOffVal).toFixed(2));
 
-  const hsnSummary = useMemo(() => {
-    const map = new Map<string, { hsn: string; taxable: number; cgst: number; sgst: number; igst: number; totalTax: number; taxRate: number }>();
-    calculatedItems.forEach((it: any) => {
-      const hsnKey = (it.hsn || 'N/A').trim();
-      const existing = map.get(hsnKey) || { hsn: hsnKey, taxable: 0, cgst: 0, sgst: 0, igst: 0, totalTax: 0, taxRate: it.taxRate };
-      existing.taxable += it.amount;
-      existing.cgst += it.cgst;
-      existing.sgst += it.sgst;
-      existing.igst += it.igst;
-      existing.totalTax += (isInterState ? it.igst : (it.cgst + it.sgst));
-      map.set(hsnKey, existing);
-    });
-    return Array.from(map.values());
-  }, [calculatedItems, isInterState]);
-
   const bankName = company?.bank_name || 'Navanagar Corporetive Bank LTD';
   const bankHolder = company?.account_holder || 'Bipin Petroleum Co.';
   const bankAccount = company?.account_number || '013000200000169';
@@ -262,15 +247,35 @@ export const InvoicePrintModal: React.FC<InvoicePrintModalProps> = ({
   const bankUpi = company?.upi_id || '';
 
   // Native Print (Computer's print options / browser print preview)
-  const handlePrint = () => {
+  const handlePrint = async (silentMode: boolean = false) => {
     if ((window as any).electronAPI?.print) {
-      (window as any).electronAPI.print();
+      if (!invoiceRef.current) return;
+      try {
+        // High-DPI rasterization matching PDF pipeline
+        const imgData = await toPng(invoiceRef.current, {
+          pixelRatio: 2,
+          backgroundColor: '#ffffff',
+          cacheBust: true,
+        });
+
+        await (window as any).electronAPI.print({
+          imageData: imgData,
+          invoiceNo,
+          silent: silentMode,
+          showPreview: true, 
+        });
+      } catch (err) {
+        console.error('Electron print error:', err);
+      }
       return;
     }
+
     if (!invoiceRef.current) {
       window.print();
       return;
     }
+
+    // Web iframe print fallback...
     try {
       const htmlContent = invoiceRef.current.outerHTML;
       let printFrame = document.getElementById('tax-invoice-print-frame') as HTMLIFrameElement;
@@ -296,22 +301,20 @@ export const InvoicePrintModal: React.FC<InvoicePrintModalProps> = ({
             <title>Tax Invoice - ${invoiceNo}</title>
             <script src="https://cdn.tailwindcss.com"></script>
             <style>
-              @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
               * {
                 -webkit-print-color-adjust: exact !important;
                 print-color-adjust: exact !important;
                 box-sizing: border-box;
               }
               html, body {
-                font-family: 'Inter', system-ui, -apple-system, sans-serif;
                 margin: 0;
                 padding: 0;
                 background-color: #ffffff;
-                color: #1e293b;
+                width: 100%;
               }
               @page {
                 size: ${paperSize === 'Letter' ? 'letter' : paperSize === 'Legal' ? 'legal' : 'A4'} portrait;
-                margin: ${margins === 'None' ? '0mm' : margins === 'Minimum' ? '3mm' : '5mm'} !important;
+                margin: 0mm !important;
               }
             </style>
           </head>
@@ -395,420 +398,388 @@ export const InvoicePrintModal: React.FC<InvoicePrintModalProps> = ({
 
         {/* Content Area */}
         <div className="flex-1 flex flex-col md:flex-row min-h-0 overflow-hidden">
-          {/* Left Column: Invoice Sheet in Frame with Zoom In/Out */}
-          <div className="flex-1 bg-slate-100 dark:bg-slate-950 p-4 sm:p-6 overflow-auto flex flex-col items-center custom-scrollbar relative">
-            {/* Zoom Controls inside the box frame */}
-            <div className="sticky top-2 z-30 mb-3 flex items-center space-x-1.5 bg-white/95 dark:bg-slate-800/95 border border-slate-200 dark:border-slate-700 shadow-md px-3 py-1.5 rounded-full text-xs text-slate-700 dark:text-slate-300">
-              <button 
-                onClick={() => setZoomLevel(prev => Math.max(50, prev - 10))}
-                className="p-1 hover:bg-slate-100 dark:hover:bg-slate-700 rounded transition-colors"
-                title="Zoom Out"
-              >
-                <ZoomOut className="w-3.5 h-3.5" />
-              </button>
-              <span className="font-mono font-medium px-1 min-w-[42px] text-center">{zoomLevel}%</span>
-              <button 
-                onClick={() => setZoomLevel(prev => Math.min(150, prev + 10))}
-                className="p-1 hover:bg-slate-100 dark:hover:bg-slate-700 rounded transition-colors"
-                title="Zoom In"
-              >
-                <ZoomIn className="w-3.5 h-3.5" />
-              </button>
-              <button 
-                onClick={() => setZoomLevel(100)}
-                className="p-1 hover:bg-slate-100 dark:hover:bg-slate-700 rounded transition-colors text-slate-400 hover:text-slate-600"
-                title="Reset Zoom"
-              >
-                <RotateCcw className="w-3 h-3" />
-              </button>
+          {/* Left Column: Invoice Sheet in Frame with Zoom In/Out & 2D Scrolling */}
+          <div className="flex-1 bg-slate-100 dark:bg-slate-950 p-4 sm:p-6 overflow-x-auto overflow-y-auto custom-scrollbar relative">
+            {/* Zoom Controls centered sticky bar */}
+            <div className="sticky top-0 z-30 mb-4 flex justify-center pointer-events-none">
+              <div className="pointer-events-auto flex items-center space-x-1.5 bg-white/95 dark:bg-slate-800/95 border border-slate-200 dark:border-slate-700 shadow-md px-3 py-1.5 rounded-full text-xs text-slate-700 dark:text-slate-300 backdrop-blur-xs">
+                <button 
+                  onClick={() => setZoomLevel(prev => Math.max(50, prev - 10))}
+                  className="p-1 hover:bg-slate-100 dark:hover:bg-slate-700 rounded transition-colors"
+                  title="Zoom Out"
+                >
+                  <ZoomOut className="w-3.5 h-3.5" />
+                </button>
+                <span className="font-mono font-medium px-1 min-w-[42px] text-center">{zoomLevel}%</span>
+                <button 
+                  onClick={() => setZoomLevel(prev => Math.min(150, prev + 10))}
+                  className="p-1 hover:bg-slate-100 dark:hover:bg-slate-700 rounded transition-colors"
+                  title="Zoom In"
+                >
+                  <ZoomIn className="w-3.5 h-3.5" />
+                </button>
+                <button 
+                  onClick={() => setZoomLevel(100)}
+                  className="p-1 hover:bg-slate-100 dark:hover:bg-slate-700 rounded transition-colors text-slate-400 hover:text-slate-600"
+                  title="Reset Zoom"
+                >
+                  <RotateCcw className="w-3 h-3" />
+                </button>
+              </div>
             </div>
 
-            {/* A4 Invoice Paper Container with Zoom scale */}
-            <div 
-              style={{ 
-                transform: `scale(${zoomLevel / 100})`, 
-                transformOrigin: 'top center',
-                transition: 'transform 0.15s ease-out'
-              }}
-              className="shrink-0 mb-8"
-            >
-              <div
-                ref={invoiceRef}
-                className="bg-white text-slate-900 w-[780px] min-h-[1050px] p-8 border border-slate-300 text-[11px] leading-snug flex flex-col justify-between shadow-lg relative"
+            {/* A4 Invoice Paper Container with Zoom scale & Scroll Preservation */}
+            <div className="min-w-fit w-full flex justify-center items-start pb-12">
+              <div 
+                style={{ 
+                  width: `${794 * (zoomLevel / 100)}px`, 
+                  height: `${1123 * (zoomLevel / 100)}px`,
+                  transform: `scale(${zoomLevel / 100})`, 
+                  transformOrigin: 'top center',
+                  transition: 'transform 0.15s ease-out'
+                }}
+                className="shrink-0"
               >
-                {/* Center Oil Can Watermark */}
-                <div 
-                  className="absolute inset-0 flex items-center justify-center pointer-events-none select-none z-0 overflow-hidden" 
-                  aria-hidden="true"
+                <div
+                  ref={invoiceRef}
+                  style={{
+                    width: '794px',
+                    minWidth: '794px',
+                    maxWidth: '794px',
+                    height: '1123px',
+                    minHeight: '1123px',
+                  }}
+                  className="invoice-print-sheet bg-white text-slate-900 p-8 border border-slate-300 text-[12px] leading-snug flex flex-col justify-between shadow-lg relative box-border"
                 >
-                  <svg
-                    viewBox="0 0 500 500"
-                    className="w-[360px] h-[360px] text-slate-900 fill-current opacity-[0.035]"
-                    xmlns="http://www.w3.org/2000/svg"
+                  {/* Center Oil Can Watermark */}
+                  <div 
+                    className="absolute inset-0 flex items-center justify-center pointer-events-none select-none z-0 overflow-hidden" 
+                    aria-hidden="true"
                   >
-                    <path d="M 230 55 C 230 48 236 44 244 44 L 288 44 C 296 44 302 48 302 55 L 302 68 C 302 72 298 75 294 75 L 290 75 L 290 102 C 290 110 295 116 300 122 C 316 138 330 160 334 184 L 336 218 C 338 232 340 248 340 264 L 340 382 C 340 416 316 442 282 442 L 152 442 C 118 442 94 416 94 382 L 94 264 C 94 222 114 186 144 164 L 178 140 C 186 134 192 125 192 115 L 192 75 L 188 75 C 184 75 180 72 180 68 L 180 55 C 180 48 186 44 194 44 L 238 44 C 246 44 252 48 252 55 Z M 164 212 C 144 226 132 248 132 272 L 132 322 C 132 338 144 350 160 350 C 176 350 188 338 188 322 L 188 256 C 188 238 178 222 164 212 Z" />
-                    <path d="M 388 138 C 388 138 434 204 434 240 C 434 268 410 292 382 292 C 354 292 330 268 330 240 C 330 204 376 138 388 138 Z" />
-                  </svg>
-                </div>
-
-                {/* Printable Content sitting above watermark */}
-                <div className="relative z-10 flex flex-col justify-between flex-1">
-                  <div>
-                    {/* 1. Header Grid: Company on left, Tax Invoice on right */}
-                    <div className="grid grid-cols-2 gap-6 pb-4">
-                      {/* Left: Company Details */}
-                      <div className="space-y-1.5">
-                        <div className="flex items-center space-x-2 mb-2">
-                          <img
-                            src={company?.logo || bpcLogoAsset || "/bpc_logo.png"}
-                            alt="Logo"
-                            className="w-7 h-7 object-cover rounded-full flex-shrink-0"
-                            referrerPolicy="no-referrer"
-                          />
-                          <h1 className="text-[17px] font-bold text-[#0f3460] tracking-tight leading-none">
-                            {companyName}
-                          </h1>
-                        </div>
-                        <div className="grid grid-cols-[60px_1fr] text-[11px] text-slate-700">
-                          <span className="text-slate-500">Phone</span>
-                          <span className="font-medium text-slate-900">{companyPhone}</span>
-                        </div>
-                        <div className="grid grid-cols-[60px_1fr] text-[11px] text-slate-700">
-                          <span className="text-slate-500">GSTIN</span>
-                          <span className="font-mono font-medium text-slate-900">{companyGstin}</span>
-                        </div>
-                        <div className="grid grid-cols-[60px_1fr] text-[11px] text-slate-700">
-                          <span className="text-slate-500">Address</span>
-                          <span className="text-slate-900">{companyAddress}</span>
-                        </div>
-                      </div>
-
-                      {/* Right: Tax Invoice Metadata */}
-                      <div className="space-y-1.5 text-right pl-4">
-                        <h2 className="text-[18px] font-bold text-slate-900 mb-2">{invoiceTitle}</h2>
-                        <div className="flex justify-between text-[11px]">
-                          <span className="text-slate-500">{isPurchase ? 'Bill / Invoice Number' : 'Invoice Number'}</span>
-                          <span className="font-mono font-medium text-slate-900">{invoiceNo}</span>
-                        </div>
-                        <div className="flex justify-between text-[11px]">
-                          <span className="text-slate-500">{isPurchase ? 'Bill Date' : 'Invoice Date'}</span>
-                          <span className="font-medium text-slate-900">{invoiceDate}</span>
-                        </div>
-                        <div className="flex justify-between text-[11px]">
-                          <span className="text-slate-500">Purchase Order Number</span>
-                          <span className="font-mono text-slate-900">{poNumber}</span>
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* 2. Billed To & Shipped To Section */}
-                    <div className="grid grid-cols-2 gap-6 py-2.5 border-t border-slate-200">
-                      {/* Billed To */}
-                      <div className="space-y-1 text-[11px]">
-                        <div className="flex justify-between">
-                          <span className="text-slate-500">{isPurchase ? 'Supplier / Vendor' : 'Billed to'}</span>
-                          <span className="font-bold text-slate-900">{customerName}</span>
-                        </div>
-                        <div className="flex justify-between">
-                          <span className="text-slate-500">GSTIN</span>
-                          <span className="font-mono text-slate-900">{customerGstin}</span>
-                        </div>
-                        <div className="flex justify-between">
-                          <span className="text-slate-500">Phone</span>
-                          <span className="text-slate-900">{customerPhone}</span>
-                        </div>
-                      </div>
-
-                      {/* Shipped To */}
-                      <div className="space-y-1 text-[11px]">
-                        <div className="flex justify-between">
-                          <span className="text-slate-500">Shipped to</span>
-                          <span className="font-bold text-slate-900">{shipToName}</span>
-                        </div>
-                        <div className="flex justify-between">
-                          <span className="text-slate-500">Address</span>
-                          <span className="text-slate-900">{shipToAddress}</span>
-                        </div>
-                        <div className="flex justify-between">
-                          <span className="text-slate-500">State & Country</span>
-                          <span className="text-slate-900">{customerStateCountry}</span>
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* 3. Items Table Section with fixed height and fixed Total row */}
-                    <div className="mt-3 min-h-[380px] flex flex-col justify-between border-b border-slate-200">
-                      <div>
-                        <table className="w-full border-collapse text-[10.5px] table-fixed">
-                          {isInterState ? (
-                            <colgroup>
-                              <col style={{ width: '36px' }} />
-                              <col />
-                              <col style={{ width: '64px' }} />
-                              <col style={{ width: '44px' }} />
-                              <col style={{ width: '68px' }} />
-                              <col style={{ width: '76px' }} />
-                              <col style={{ width: '48px' }} />
-                              <col style={{ width: '128px' }} />
-                              <col style={{ width: '80px' }} />
-                            </colgroup>
-                          ) : (
-                            <colgroup>
-                              <col style={{ width: '36px' }} />
-                              <col />
-                              <col style={{ width: '64px' }} />
-                              <col style={{ width: '44px' }} />
-                              <col style={{ width: '68px' }} />
-                              <col style={{ width: '76px' }} />
-                              <col style={{ width: '48px' }} />
-                              <col style={{ width: '64px' }} />
-                              <col style={{ width: '64px' }} />
-                              <col style={{ width: '80px' }} />
-                            </colgroup>
-                          )}
-                          <thead>
-                            <tr className="bg-[#0f3460] text-white font-semibold">
-                              <th className="py-1.5 px-2 text-left">Sr</th>
-                              <th className="py-1.5 px-2 text-left">Particulars</th>
-                              <th className="py-1.5 px-2 text-left">HSN</th>
-                              <th className="py-1.5 px-2 text-center">QTY</th>
-                              <th className="py-1.5 px-2 text-right">Rate</th>
-                              <th className="py-1.5 px-2 text-right">Amount</th>
-                              <th className="py-1.5 px-2 text-center">Tax %</th>
-                              {isInterState ? (
-                                <th className="py-1.5 px-2 text-right">IGST</th>
-                              ) : (
-                                <>
-                                  <th className="py-1.5 px-2 text-right">CGST</th>
-                                  <th className="py-1.5 px-2 text-right">SGST</th>
-                                </>
-                              )}
-                              <th className="py-1.5 px-2 text-right">Subtotal</th>
-                            </tr>
-                          </thead>
-                          <tbody className="divide-y divide-slate-100">
-                            {calculatedItems.map((item, idx) => (
-                              <tr key={idx} className="hover:bg-slate-50/50">
-                                <td className="py-1.5 px-2 text-slate-500">{item.sr}</td>
-                                <td className="py-1.5 px-2 font-medium text-slate-900 truncate" title={item.name}>{item.name}</td>
-                                <td className="py-1.5 px-2 font-mono text-slate-600">{item.hsn}</td>
-                                <td className="py-1.5 px-2 text-center font-mono text-slate-900">{item.qty}</td>
-                                <td className="py-1.5 px-2 text-right font-mono text-slate-700">{item.rate.toFixed(2)}</td>
-                                <td className="py-1.5 px-2 text-right font-mono text-slate-900">{item.amount.toFixed(2)}</td>
-                                <td className="py-1.5 px-2 text-center font-mono text-slate-600">{item.taxRate}%</td>
-                                {isInterState ? (
-                                  <td className="py-1.5 px-2 text-right font-mono text-slate-700">{item.igst.toFixed(2)}</td>
-                                ) : (
-                                  <>
-                                    <td className="py-1.5 px-2 text-right font-mono text-slate-700">{item.cgst.toFixed(2)}</td>
-                                    <td className="py-1.5 px-2 text-right font-mono text-slate-700">{item.sgst.toFixed(2)}</td>
-                                  </>
-                                )}
-                                <td className="py-1.5 px-2 text-right font-mono font-medium text-slate-900">{item.subtotal.toFixed(2)}</td>
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
-                      </div>
-
-                      {/* Total amount's whole section fixed directly above Grand Total in words */}
-                      <div className="w-full border-t-2 border-slate-300 font-bold bg-slate-50/70 shrink-0">
-                        <table className="w-full border-collapse text-[10.5px] table-fixed">
-                          {isInterState ? (
-                            <colgroup>
-                              <col style={{ width: '36px' }} />
-                              <col />
-                              <col style={{ width: '64px' }} />
-                              <col style={{ width: '44px' }} />
-                              <col style={{ width: '68px' }} />
-                              <col style={{ width: '76px' }} />
-                              <col style={{ width: '48px' }} />
-                              <col style={{ width: '128px' }} />
-                              <col style={{ width: '80px' }} />
-                            </colgroup>
-                          ) : (
-                            <colgroup>
-                              <col style={{ width: '36px' }} />
-                              <col />
-                              <col style={{ width: '64px' }} />
-                              <col style={{ width: '44px' }} />
-                              <col style={{ width: '68px' }} />
-                              <col style={{ width: '76px' }} />
-                              <col style={{ width: '48px' }} />
-                              <col style={{ width: '64px' }} />
-                              <col style={{ width: '64px' }} />
-                              <col style={{ width: '80px' }} />
-                            </colgroup>
-                          )}
-                          <tbody>
-                            <tr>
-                              <td className="py-2 px-2 text-slate-800 text-left font-bold">Total</td>
-                              <td className="py-2 px-2"></td>
-                              <td className="py-2 px-2"></td>
-                              <td className="py-2 px-2 text-center font-mono">{totalQty}</td>
-                              <td className="py-2 px-2"></td>
-                              <td className="py-2 px-2 text-right font-mono">{totalAmount.toFixed(2)}</td>
-                              <td className="py-2 px-2"></td>
-                              {isInterState ? (
-                                <td className="py-2 px-2 text-right font-mono">{totalIgst.toFixed(2)}</td>
-                              ) : (
-                                <>
-                                  <td className="py-2 px-2 text-right font-mono">{totalCgst.toFixed(2)}</td>
-                                  <td className="py-2 px-2 text-right font-mono">{totalSgst.toFixed(2)}</td>
-                                </>
-                              )}
-                              <td className="py-2 px-2 text-right font-mono">{totalSubtotal.toFixed(2)}</td>
-                            </tr>
-                          </tbody>
-                        </table>
-                      </div>
-                    </div>
+                    <svg
+                      viewBox="0 0 500 500"
+                      className="w-[360px] h-[360px] text-slate-900 fill-current opacity-[0.035]"
+                      xmlns="http://www.w3.org/2000/svg"
+                    >
+                      <path d="M 230 55 C 230 48 236 44 244 44 L 288 44 C 296 44 302 48 302 55 L 302 68 C 302 72 298 75 294 75 L 290 75 L 290 102 C 290 110 295 116 300 122 C 316 138 330 160 334 184 L 336 218 C 338 232 340 248 340 264 L 340 382 C 340 416 316 442 282 442 L 152 442 C 118 442 94 416 94 382 L 94 264 C 94 222 114 186 144 164 L 178 140 C 186 134 192 125 192 115 L 192 75 L 188 75 C 184 75 180 72 180 68 L 180 55 C 180 48 186 44 194 44 L 238 44 C 246 44 252 48 252 55 Z M 164 212 C 144 226 132 248 132 272 L 132 322 C 132 338 144 350 160 350 C 176 350 188 338 188 322 L 188 256 C 188 238 178 222 164 212 Z" />
+                      <path d="M 388 138 C 388 138 434 204 434 240 C 434 268 410 292 382 292 C 354 292 330 268 330 240 C 330 204 376 138 388 138 Z" />
+                    </svg>
                   </div>
 
-                  {/* 4. Bottom Section: Totals, Additional Charges, Bank Details & Signature */}
-                  <div className="mt-auto pt-4 space-y-4">
-                    {/* Grand Total in words & Calculations */}
-                    <div className="grid grid-cols-2 gap-6 pt-2">
-                      {/* Left: In words & Tax Summary */}
-                      <div className="space-y-3">
-                        <div className="space-y-1">
-                          <div className="text-[11px] italic text-slate-500">Grand Total in words</div>
-                          <div className="text-[11.5px] font-medium text-slate-800 leading-relaxed">
+                  {/* Printable Content sitting above watermark */}
+                  <div className="relative z-10 flex flex-col justify-between flex-1">
+                    <div>
+                      {/* 1. Header: Fixed 340px Left and 340px Right */}
+                      <div className="flex justify-between items-start pb-4">
+                        {/* Left: Company Details */}
+                        <div className="w-[340px] space-y-1.5">
+                          <div className="flex items-center space-x-2.5 mb-2">
+                            <img
+                              src={company?.logo || bpcLogoAsset || "/bpc_logo.png"}
+                              alt="Logo"
+                              className="w-8 h-8 object-cover rounded-full flex-shrink-0"
+                              referrerPolicy="no-referrer"
+                            />
+                            <h1 className="text-[19px] font-bold text-[#0f3460] tracking-tight leading-none truncate">
+                              {companyName}
+                            </h1>
+                          </div>
+                          <div className="grid grid-cols-[64px_1fr] text-[12px] text-slate-700 leading-snug">
+                            <span className="text-slate-500 font-medium">Phone</span>
+                            <span className="font-medium text-slate-900">{companyPhone}</span>
+                          </div>
+                          <div className="grid grid-cols-[64px_1fr] text-[12px] text-slate-700 leading-snug">
+                            <span className="text-slate-500 font-medium">GSTIN</span>
+                            <span className="font-mono font-bold text-slate-900">{companyGstin}</span>
+                          </div>
+                          <div className="grid grid-cols-[64px_1fr] text-[12px] text-slate-700 leading-snug">
+                            <span className="text-slate-500 font-medium">Address</span>
+                            <span className="text-slate-800 line-clamp-2">{companyAddress}</span>
+                          </div>
+                        </div>
+
+                        {/* Right: Tax Invoice Metadata */}
+                        <div className="w-[340px] space-y-1.5 text-right">
+                          <h2 className="text-[19px] font-bold text-slate-900 mb-2">{invoiceTitle}</h2>
+                          <div className="grid grid-cols-[160px_1fr] text-[12px] leading-snug">
+                            <span className="text-slate-500 text-left">{isPurchase ? 'Bill / Invoice Number' : 'Invoice Number'}</span>
+                            <span className="font-mono font-bold text-slate-900 text-right">{invoiceNo}</span>
+                          </div>
+                          <div className="grid grid-cols-[160px_1fr] text-[12px] leading-snug">
+                            <span className="text-slate-500 text-left">{isPurchase ? 'Bill Date' : 'Invoice Date'}</span>
+                            <span className="font-medium text-slate-900 text-right">{invoiceDate}</span>
+                          </div>
+                          <div className="grid grid-cols-[160px_1fr] text-[12px] leading-snug">
+                            <span className="text-slate-500 text-left">Purchase Order Number</span>
+                            <span className="font-mono font-medium text-slate-900 text-right">{poNumber}</span>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* 2. Billed To & Shipped To Section */}
+                      <div className="flex justify-between py-2.5 border-t border-slate-200">
+                        {/* Billed To */}
+                        <div className="w-[340px] space-y-1 text-[12px] leading-snug">
+                          <div className="grid grid-cols-[80px_1fr] items-baseline">
+                            <span className="text-slate-500 font-medium">{isPurchase ? 'Supplier' : 'Billed to'}</span>
+                            <span className="font-bold text-[12.5px] text-slate-900 truncate">{customerName}</span>
+                          </div>
+                          <div className="grid grid-cols-[80px_1fr] items-baseline">
+                            <span className="text-slate-500 font-medium">GSTIN</span>
+                            <span className="font-mono font-bold text-slate-900">{customerGstin}</span>
+                          </div>
+                          <div className="grid grid-cols-[80px_1fr] items-baseline">
+                            <span className="text-slate-500 font-medium">Phone</span>
+                            <span className="text-slate-900">{customerPhone}</span>
+                          </div>
+                        </div>
+
+                        {/* Shipped To */}
+                        <div className="w-[340px] space-y-1 text-[12px] leading-snug">
+                          <div className="grid grid-cols-[80px_1fr] items-baseline">
+                            <span className="text-slate-500 font-medium">Shipped to</span>
+                            <span className="font-bold text-[12.5px] text-slate-900 truncate">{shipToName}</span>
+                          </div>
+                          <div className="grid grid-cols-[80px_1fr] items-baseline">
+                            <span className="text-slate-500 font-medium">Address</span>
+                            <span className="text-slate-900 line-clamp-2">{shipToAddress}</span>
+                          </div>
+                          <div className="grid grid-cols-[80px_1fr] items-baseline">
+                            <span className="text-slate-500 font-medium">State & Country</span>
+                            <span className="text-slate-900">{customerStateCountry}</span>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* 3. Items Table Section with fixed 730px layout and perfectly matching Total row */}
+                      <div className="mt-3 min-h-[380px] flex flex-col justify-between border-b border-slate-200">
+                        <div>
+                          <table className="w-[730px] border-collapse text-[11.5px] table-fixed">
+                            {isInterState ? (
+                              <colgroup>
+                                <col style={{ width: '36px' }} />
+                                <col style={{ width: '210px' }} />
+                                <col style={{ width: '64px' }} />
+                                <col style={{ width: '44px' }} />
+                                <col style={{ width: '68px' }} />
+                                <col style={{ width: '76px' }} />
+                                <col style={{ width: '50px' }} />
+                                <col style={{ width: '102px' }} />
+                                <col style={{ width: '80px' }} />
+                              </colgroup>
+                            ) : (
+                              <colgroup>
+                                <col style={{ width: '36px' }} />
+                                <col style={{ width: '186px' }} />
+                                <col style={{ width: '64px' }} />
+                                <col style={{ width: '44px' }} />
+                                <col style={{ width: '68px' }} />
+                                <col style={{ width: '76px' }} />
+                                <col style={{ width: '50px' }} />
+                                <col style={{ width: '68px' }} />
+                                <col style={{ width: '68px' }} />
+                                <col style={{ width: '70px' }} />
+                              </colgroup>
+                            )}
+                            <thead>
+                              <tr className="bg-[#0f3460] text-white font-semibold">
+                                <th className="py-2 px-2 text-center">Sr</th>
+                                <th className="py-2 px-2 text-left">Particulars</th>
+                                <th className="py-2 px-2 text-center">HSN</th>
+                                <th className="py-2 px-2 text-center">QTY</th>
+                                <th className="py-2 px-2 text-right">Rate</th>
+                                <th className="py-2 px-2 text-right">Amount</th>
+                                <th className="py-2 px-2 text-center">Tax %</th>
+                                {isInterState ? (
+                                  <th className="py-2 px-2 text-right">IGST</th>
+                                ) : (
+                                  <>
+                                    <th className="py-2 px-2 text-right">CGST</th>
+                                    <th className="py-2 px-2 text-right">SGST</th>
+                                  </>
+                                )}
+                                <th className="py-2 px-2 text-right">Subtotal</th>
+                              </tr>
+                            </thead>
+                            <tbody className="divide-y divide-slate-100">
+                              {calculatedItems.map((item, idx) => (
+                                <tr key={idx} className="hover:bg-slate-50/50">
+                                  <td className="py-1.5 px-2 text-center text-slate-500">{item.sr}</td>
+                                  <td className="py-1.5 px-2 font-medium text-slate-900 truncate" title={item.name}>{item.name}</td>
+                                  <td className="py-1.5 px-2 text-center font-mono text-slate-600">{item.hsn}</td>
+                                  <td className="py-1.5 px-2 text-center font-mono font-medium text-slate-900">{item.qty}</td>
+                                  <td className="py-1.5 px-2 text-right font-mono text-slate-700">{item.rate.toFixed(2)}</td>
+                                  <td className="py-1.5 px-2 text-right font-mono text-slate-900 font-medium">{item.amount.toFixed(2)}</td>
+                                  <td className="py-1.5 px-2 text-center font-mono text-slate-600">{item.taxRate}%</td>
+                                  {isInterState ? (
+                                    <td className="py-1.5 px-2 text-right font-mono text-slate-700">{item.igst.toFixed(2)}</td>
+                                  ) : (
+                                    <>
+                                      <td className="py-1.5 px-2 text-right font-mono text-slate-700">{item.cgst.toFixed(2)}</td>
+                                      <td className="py-1.5 px-2 text-right font-mono text-slate-700">{item.sgst.toFixed(2)}</td>
+                                    </>
+                                  )}
+                                  <td className="py-1.5 px-2 text-right font-mono font-semibold text-slate-900">{item.subtotal.toFixed(2)}</td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+
+                        {/* Total amount row perfectly matching the exact column layout above */}
+                        <div className="w-full border-t-2 border-slate-300 font-bold bg-slate-50/80 shrink-0">
+                          <table className="w-[730px] border-collapse text-[12px] table-fixed">
+                            {isInterState ? (
+                              <colgroup>
+                                <col style={{ width: '36px' }} />
+                                <col style={{ width: '210px' }} />
+                                <col style={{ width: '64px' }} />
+                                <col style={{ width: '44px' }} />
+                                <col style={{ width: '68px' }} />
+                                <col style={{ width: '76px' }} />
+                                <col style={{ width: '50px' }} />
+                                <col style={{ width: '102px' }} />
+                                <col style={{ width: '80px' }} />
+                              </colgroup>
+                            ) : (
+                              <colgroup>
+                                <col style={{ width: '36px' }} />
+                                <col style={{ width: '186px' }} />
+                                <col style={{ width: '64px' }} />
+                                <col style={{ width: '44px' }} />
+                                <col style={{ width: '68px' }} />
+                                <col style={{ width: '76px' }} />
+                                <col style={{ width: '50px' }} />
+                                <col style={{ width: '68px' }} />
+                                <col style={{ width: '68px' }} />
+                                <col style={{ width: '70px' }} />
+                              </colgroup>
+                            )}
+                            <tbody>
+                              <tr className="font-bold text-slate-900">
+                                <td colSpan={3} className="py-2.5 px-3 text-slate-800 text-left font-bold">Total</td>
+                                <td className="py-2.5 px-2 text-center font-mono font-bold">{totalQty}</td>
+                                <td className="py-2.5 px-2"></td>
+                                <td className="py-2.5 px-2 text-right font-mono font-bold">{totalAmount.toFixed(2)}</td>
+                                <td className="py-2.5 px-2"></td>
+                                {isInterState ? (
+                                  <td className="py-2.5 px-2 text-right font-mono font-bold">{totalIgst.toFixed(2)}</td>
+                                ) : (
+                                  <>
+                                    <td className="py-2.5 px-2 text-right font-mono font-bold">{totalCgst.toFixed(2)}</td>
+                                    <td className="py-2.5 px-2 text-right font-mono font-bold">{totalSgst.toFixed(2)}</td>
+                                  </>
+                                )}
+                                <td className="py-2.5 px-2 text-right font-mono font-bold text-slate-950">{totalSubtotal.toFixed(2)}</td>
+                              </tr>
+                            </tbody>
+                          </table>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* 4. Bottom Section: Totals, Additional Charges, Bank Details & Signature */}
+                    <div className="mt-auto pt-4 space-y-4">
+                      {/* Grand Total in words & Calculations */}
+                      <div className="flex justify-between items-start pt-2">
+                        {/* Left: In words */}
+                        <div className="w-[340px] space-y-1">
+                          <div className="text-[12px] font-semibold uppercase tracking-wider text-slate-500">Grand Total in words</div>
+                          <div className="text-[13px] font-semibold text-slate-900 leading-relaxed capitalize">
                             {numberToWords(grandTotalVal)}
                           </div>
                         </div>
 
-                        {/* HSN Tax Summary Table */}
-                        {hsnSummary.length > 0 && (
-                          <div className="pt-1">
-                            <div className="text-[10px] font-semibold text-slate-600 uppercase tracking-tight mb-1">
-                              Tax Summary ({isInterState ? 'IGST' : 'CGST / SGST'})
-                            </div>
-                            <table className="w-full text-[9px] border border-slate-200 border-collapse">
-                              <thead>
-                                <tr className="bg-slate-100 text-slate-700 font-semibold text-left">
-                                  <th className="p-1 border-r border-slate-200">HSN/SAC</th>
-                                  <th className="p-1 text-right border-r border-slate-200">Taxable</th>
-                                  {isInterState ? (
-                                    <th className="p-1 text-right border-r border-slate-200">IGST (Rate/Amt)</th>
-                                  ) : (
-                                    <>
-                                      <th className="p-1 text-right border-r border-slate-200">CGST (Rate/Amt)</th>
-                                      <th className="p-1 text-right border-r border-slate-200">SGST (Rate/Amt)</th>
-                                    </>
-                                  )}
-                                  <th className="p-1 text-right">Tax Amt</th>
-                                </tr>
-                              </thead>
-                              <tbody>
-                                {hsnSummary.map((h, i) => (
-                                  <tr key={i} className="border-t border-slate-100">
-                                    <td className="p-1 font-mono border-r border-slate-200">{h.hsn}</td>
-                                    <td className="p-1 font-mono text-right border-r border-slate-200">{h.taxable.toFixed(2)}</td>
-                                    {isInterState ? (
-                                      <td className="p-1 font-mono text-right border-r border-slate-200">{h.taxRate}% | {h.igst.toFixed(2)}</td>
-                                    ) : (
-                                      <>
-                                        <td className="p-1 font-mono text-right border-r border-slate-200">{(h.taxRate / 2)}% | {h.cgst.toFixed(2)}</td>
-                                        <td className="p-1 font-mono text-right border-r border-slate-200">{(h.taxRate / 2)}% | {h.sgst.toFixed(2)}</td>
-                                      </>
-                                    )}
-                                    <td className="p-1 font-mono text-right font-medium text-slate-800">{h.totalTax.toFixed(2)}</td>
-                                  </tr>
-                                ))}
-                              </tbody>
-                            </table>
+                        {/* Right: Amounts, CGST/SGST Breakdown, Additional Charges & Round Off */}
+                        <div className="w-[340px] space-y-2 text-[12.5px]">
+                          <div className="grid grid-cols-[180px_1fr] items-center text-slate-700">
+                            <span className="text-left font-medium">Taxable Amount</span>
+                            <span className="font-mono font-semibold text-slate-900 text-right">{taxableVal.toFixed(2)}</span>
                           </div>
-                        )}
-                      </div>
 
-                      {/* Right: Amounts, CGST/SGST Breakdown, Additional Charges & Round Off */}
-                      <div className="space-y-1.5 text-[11px]">
-                        <div className="flex justify-between">
-                          <span className="text-slate-600">Taxable Amount</span>
-                          <span className="font-mono text-slate-900">{taxableVal.toFixed(2)}</span>
-                        </div>
-
-                        {isInterState ? (
-                          <div className="flex justify-between">
-                            <span className="text-slate-600">Integrated Tax (IGST)</span>
-                            <span className="font-mono text-slate-900">{igstVal.toFixed(2)}</span>
-                          </div>
-                        ) : (
-                          <>
-                            <div className="flex justify-between">
-                              <span className="text-slate-600">Central Tax (CGST)</span>
-                              <span className="font-mono text-slate-900">{cgstVal.toFixed(2)}</span>
+                          {isInterState ? (
+                            <div className="grid grid-cols-[180px_1fr] items-center text-slate-700">
+                              <span className="text-left font-medium">Integrated Tax (IGST)</span>
+                              <span className="font-mono font-semibold text-slate-900 text-right">{igstVal.toFixed(2)}</span>
                             </div>
-                            <div className="flex justify-between">
-                              <span className="text-slate-600">State Tax (SGST)</span>
-                              <span className="font-mono text-slate-900">{sgstVal.toFixed(2)}</span>
-                            </div>
-                          </>
-                        )}
-
-                        {appliedCharges.length > 0 && (
-                          <div className="pt-1 space-y-1 border-t border-slate-100">
-                            <div className="text-[10px] font-medium text-slate-500 uppercase">Additional Charges</div>
-                            {appliedCharges.map((ch: any, idx: number) => (
-                              <div key={idx} className="flex justify-between text-slate-700">
-                                <span>{ch.name}</span>
-                                <span className="font-mono">{parseFloat(ch.amount || 0).toFixed(2)}</span>
+                          ) : (
+                            <>
+                              <div className="grid grid-cols-[180px_1fr] items-center text-slate-700">
+                                <span className="text-left font-medium">Central Tax (CGST)</span>
+                                <span className="font-mono font-semibold text-slate-900 text-right">{cgstVal.toFixed(2)}</span>
                               </div>
-                            ))}
+                              <div className="grid grid-cols-[180px_1fr] items-center text-slate-700">
+                                <span className="text-left font-medium">State Tax (SGST)</span>
+                                <span className="font-mono font-semibold text-slate-900 text-right">{sgstVal.toFixed(2)}</span>
+                              </div>
+                            </>
+                          )}
+
+                          {appliedCharges.length > 0 && (
+                            <div className="pt-1.5 space-y-1 border-t border-slate-200">
+                              <div className="text-[11px] font-semibold text-slate-500 uppercase tracking-wide">Additional Charges</div>
+                              {appliedCharges.map((ch: any, idx: number) => (
+                                <div key={idx} className="grid grid-cols-[180px_1fr] items-center text-slate-700">
+                                  <span className="text-left">{ch.name}</span>
+                                  <span className="font-mono font-medium text-right">{parseFloat(ch.amount || 0).toFixed(2)}</span>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+
+                          <div className="grid grid-cols-[180px_1fr] items-center text-slate-700 pt-1 border-t border-slate-200">
+                            <span className="font-medium text-left">Round Off</span>
+                            <span className="font-mono font-semibold text-slate-900 text-right">
+                              {roundOffVal > 0 ? `+${roundOffVal.toFixed(2)}` : (roundOffVal < 0 ? roundOffVal.toFixed(2) : '0.00')}
+                            </span>
                           </div>
-                        )}
 
-                        <div className="flex justify-between text-slate-700 pt-0.5 border-t border-slate-100">
-                          <span className="text-slate-600">Round Off</span>
-                          <span className="font-mono text-slate-900">
-                            {roundOffVal > 0 ? `+${roundOffVal.toFixed(2)}` : (roundOffVal < 0 ? roundOffVal.toFixed(2) : '0.00')}
-                          </span>
-                        </div>
-
-                        <div className="border-t-2 border-slate-300 pt-1.5 flex justify-between font-bold text-[12px] text-slate-900">
-                          <span>Grand Total</span>
-                          <span className="font-mono">{grandTotalVal.toFixed(2)}</span>
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Bank Details & Authorized Signatory */}
-                    <div className="grid grid-cols-2 gap-6 border-t border-slate-200 pt-3">
-                      {/* Bank Details */}
-                      <div className="space-y-0.5 text-[10.5px]">
-                        <div className="text-[11px] italic text-slate-500 mb-1">Bank Details</div>
-                        <div className="flex justify-between text-slate-600">
-                          <span>Bank</span>
-                          <span className="font-medium text-slate-900">{bankName}</span>
-                        </div>
-                        <div className="flex justify-between text-slate-600">
-                          <span>A/c Holder</span>
-                          <span className="font-medium text-slate-900">{bankHolder}</span>
-                        </div>
-                        <div className="flex justify-between text-slate-600">
-                          <span>A/c Number</span>
-                          <span className="font-mono text-slate-900">{bankAccount}</span>
-                        </div>
-                        <div className="flex justify-between text-slate-600">
-                          <span>IFSC Code</span>
-                          <span className="font-mono text-slate-900">{bankIfsc}</span>
-                        </div>
-                        <div className="flex justify-between text-slate-600">
-                          <span>UPI ID</span>
-                          <span className="text-slate-900">{bankUpi || 'UPI ID'}</span>
+                          <div className="grid grid-cols-[160px_1fr] items-baseline border-t-2 border-slate-400 pt-2 font-bold text-slate-900">
+                            <span className="text-[13.5px] text-left">Grand Total</span>
+                            <span className="font-mono text-[16px] font-bold text-slate-900 text-right">{grandTotalVal.toFixed(2)}</span>
+                          </div>
                         </div>
                       </div>
 
-                      {/* Signatory */}
-                      <div className="flex flex-col justify-between items-end text-right">
-                        <div className="text-[11px] italic text-slate-500">
-                          for {companyName}
+                      {/* Bank Details & Authorized Signatory */}
+                      <div className="flex justify-between items-end border-t border-slate-200 pt-3">
+                        {/* Bank Details */}
+                        <div className="w-[340px] space-y-1 text-[12.5px]">
+                          <div className="text-[12px] font-bold text-slate-700 uppercase tracking-wide mb-1">Bank Details</div>
+                          <div className="grid grid-cols-[90px_1fr] items-center text-slate-600">
+                            <span className="font-medium text-slate-500 text-left">Bank</span>
+                            <span className="font-semibold text-slate-900 text-right truncate">{bankName}</span>
+                          </div>
+                          <div className="grid grid-cols-[90px_1fr] items-center text-slate-600">
+                            <span className="font-medium text-slate-500 text-left">A/c Holder</span>
+                            <span className="font-semibold text-slate-900 text-right truncate">{bankHolder}</span>
+                          </div>
+                          <div className="grid grid-cols-[90px_1fr] items-center text-slate-600">
+                            <span className="font-medium text-slate-500 text-left">A/c Number</span>
+                            <span className="font-mono font-bold text-slate-900 tracking-wider text-right">{bankAccount}</span>
+                          </div>
+                          <div className="grid grid-cols-[90px_1fr] items-center text-slate-600">
+                            <span className="font-medium text-slate-500 text-left">IFSC Code</span>
+                            <span className="font-mono font-bold text-slate-900 tracking-wide text-right">{bankIfsc}</span>
+                          </div>
+                          {bankUpi && (
+                            <div className="grid grid-cols-[90px_1fr] items-center text-slate-600">
+                              <span className="font-medium text-slate-500 text-left">UPI ID</span>
+                              <span className="font-medium text-slate-900 text-right truncate">{bankUpi}</span>
+                            </div>
+                          )}
                         </div>
-                        <div className="pt-10">
-                          <div className="w-40 border-b border-slate-300 mb-1" />
-                          <div className="text-[10px] italic text-slate-500 w-40 text-center">
-                            Authorized Signatory
+
+                        {/* Signatory */}
+                        <div className="w-[340px] flex flex-col justify-between items-end text-right">
+                          <div className="text-[12px] font-medium text-slate-600">
+                            for {companyName}
+                          </div>
+                          <div className="pt-10">
+                            <div className="w-44 border-b border-slate-400 mb-1.5" />
+                            <div className="text-[11.5px] font-medium text-slate-600 w-44 text-center">
+                              Authorized Signatory
+                            </div>
                           </div>
                         </div>
                       </div>

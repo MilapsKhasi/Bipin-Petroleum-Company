@@ -10,9 +10,9 @@ import NewVoucherDropdown from '../components/NewVoucherDropdown';
 import { supabase } from '../lib/supabase';
 
 const Dashboard = () => {
-  const [stats, setStats] = useState({ 
+  const [stats, setStats] = useState({
     totalSales: 0,
-    totalPurchases: 0, 
+    totalPurchases: 0,
     payables: 0,
     receivables: 0,
     gstPaid: 0,
@@ -45,9 +45,22 @@ const Dashboard = () => {
         billQuery = billQuery.gte('date', dateRange.startDate).lte('date', dateRange.endDate);
         saleQuery = saleQuery.gte('date', dateRange.startDate).lte('date', dateRange.endDate);
       }
-      
-      const [{ data: bills }, { data: sales }] = await Promise.all([billQuery, saleQuery]);
-      
+
+      const [{ data: bills }, { data: sales }, { data: allPaymentBills }, { data: allPaymentSales }] = await Promise.all([
+        billQuery,
+        saleQuery,
+        supabase
+          .from('purchase_bills')
+          .select('*')
+          .eq('company_id', cid)
+          .eq('is_deleted', false),
+        supabase
+          .from('sales_invoices')
+          .select('*')
+          .eq('company_id', cid)
+          .eq('is_deleted', false)
+      ]);
+
       const { data: allParties } = await supabase.from('vendors').select('party_type, is_customer').eq('company_id', cid).eq('is_deleted', false);
       const customerCount = (allParties || []).filter((p: any) => {
         const pt = (p.party_type || '').toLowerCase();
@@ -60,8 +73,13 @@ const Dashboard = () => {
       const { count: itemCount } = await supabase.from('stock_items').select('*', { count: 'exact', head: true }).eq('company_id', cid).eq('is_deleted', false);
 
       const allPaymentVouchers = [
-        ...(bills || []).map((b: any) => normalizeBill(b)).filter((b: any) => b?.items_raw?.is_payment_voucher === true),
-        ...(sales || []).map((s: any) => normalizeBill(s)).filter((s: any) => s?.items_raw?.is_payment_voucher === true)
+        ...(allPaymentBills || [])
+          .map((b: any) => normalizeBill(b))
+          .filter((b: any) => b?.items_raw?.is_payment_voucher === true),
+
+        ...(allPaymentSales || [])
+          .map((s: any) => normalizeBill(s))
+          .filter((s: any) => s?.items_raw?.is_payment_voucher === true)
       ];
 
       const actualPurchases = (bills || []).map((b: any) => {
@@ -92,11 +110,11 @@ const Dashboard = () => {
       const payables = actualPurchases.reduce((acc, v) => acc + getInvoiceOutstanding(v), 0);
       const receivables = actualSales.reduce((acc, v) => acc + getInvoiceOutstanding(v), 0);
 
-      setStats({ 
-        totalSales: actualSales.reduce((acc, b) => acc + Number(b.grand_total || 0), 0), 
-        totalPurchases: actualPurchases.reduce((acc, b) => acc + Number(b.grand_total || 0), 0), 
-        payables, 
-        receivables, 
+      setStats({
+        totalSales: actualSales.reduce((acc, b) => acc + Number(b.grand_total || 0), 0),
+        totalPurchases: actualPurchases.reduce((acc, b) => acc + Number(b.grand_total || 0), 0),
+        payables,
+        receivables,
         gstPaid: actualPurchases.reduce((acc, v) => acc + Number(v.total_gst || 0), 0),
         totalVendors: vendorCount || 0,
         totalCustomers: customerCount || 0,
@@ -144,23 +162,23 @@ const Dashboard = () => {
     <div className="space-y-6">
       {/* Sales Invoice Modal */}
       <Modal isOpen={isSalesModalOpen} onClose={() => setIsSalesModalOpen(false)} title="New Sales Invoice" maxWidth="max-w-5xl">
-        <SalesInvoiceForm 
-          onSubmit={(inv, shouldPrint, isSaveAndNew) => { 
-            if (!isSaveAndNew) setIsSalesModalOpen(false); 
-            loadData(); 
-          }} 
-          onCancel={() => setIsSalesModalOpen(false)} 
+        <SalesInvoiceForm
+          onSubmit={(inv, shouldPrint, isSaveAndNew) => {
+            if (!isSaveAndNew) setIsSalesModalOpen(false);
+            loadData();
+          }}
+          onCancel={() => setIsSalesModalOpen(false)}
         />
       </Modal>
 
       {/* Purchase Bill Modal */}
       <Modal isOpen={isPurchaseModalOpen} onClose={() => setIsPurchaseModalOpen(false)} title="New Purchase Bill" maxWidth="max-w-5xl">
-        <BillForm 
-          onSubmit={(bill, isSaveAndNew) => { 
-            if (!isSaveAndNew) setIsPurchaseModalOpen(false); 
-            loadData(); 
-          }} 
-          onCancel={() => setIsPurchaseModalOpen(false)} 
+        <BillForm
+          onSubmit={(bill, isSaveAndNew) => {
+            if (!isSaveAndNew) setIsPurchaseModalOpen(false);
+            loadData();
+          }}
+          onCancel={() => setIsPurchaseModalOpen(false)}
         />
       </Modal>
 
@@ -208,7 +226,7 @@ const Dashboard = () => {
             <input type="text" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} placeholder="Filter list..." className="pl-7 pr-3 py-1 border border-slate-200 dark:border-slate-700 rounded text-xs outline-none focus:border-slate-300 dark:focus:border-slate-600 w-full bg-white dark:bg-slate-800 text-slate-900 dark:text-white" />
           </div>
         </div>
-        
+
         <div className="overflow-x-auto">
           <table className="clean-table min-w-[800px] sm:min-w-full">
             <thead>

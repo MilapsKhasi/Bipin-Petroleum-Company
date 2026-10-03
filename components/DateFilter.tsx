@@ -20,6 +20,48 @@ const MONTH_MAP: { [key: string]: number } = {
   'July': 6, 'August': 7, 'September': 8, 'October': 9, 'November': 10, 'December': 11
 };
 
+const STORAGE_YEARS_KEY = 'bpc_date_filter_years';
+const STORAGE_MONTHS_KEY = 'bpc_date_filter_months';
+
+const areArraysEqual = (a: string[], b: string[]) => {
+  if (a.length !== b.length) return false;
+  return a.every((v, i) => v === b[i]);
+};
+
+const getInitialYears = (): string[] => {
+  try {
+    if (typeof localStorage !== 'undefined') {
+      const saved = localStorage.getItem(STORAGE_YEARS_KEY);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          return parsed;
+        }
+      }
+    }
+  } catch (e) {
+    console.error("Failed to parse saved filter years", e);
+  }
+  return ['This Year'];
+};
+
+const getInitialMonths = (): string[] => {
+  try {
+    if (typeof localStorage !== 'undefined') {
+      const saved = localStorage.getItem(STORAGE_MONTHS_KEY);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          return parsed;
+        }
+      }
+    }
+  } catch (e) {
+    console.error("Failed to parse saved filter months", e);
+  }
+  return ['This Month'];
+};
+
 const DateFilter = forwardRef<DateFilterHandle, DateFilterProps>(({ onFilterChange }, ref) => {
   const currentYear = new Date().getFullYear();
   const currentMonthIdx = new Date().getMonth();
@@ -31,8 +73,8 @@ const DateFilter = forwardRef<DateFilterHandle, DateFilterProps>(({ onFilterChan
     { label: `${currentYear - 2}-${currentYear - 1}`, value: `${currentYear - 2}-${currentYear - 1}` },
   ];
 
-  const [selectedYears, setSelectedYears] = useState<string[]>(['This Year']);
-  const [selectedMonths, setSelectedMonths] = useState<string[]>(['This Month']);
+  const [selectedYears, setSelectedYears] = useState<string[]>(getInitialYears);
+  const [selectedMonths, setSelectedMonths] = useState<string[]>(getInitialMonths);
 
   const [isYearOpen, setIsYearOpen] = useState(false);
   const [isMonthOpen, setIsMonthOpen] = useState(false);
@@ -44,13 +86,70 @@ const DateFilter = forwardRef<DateFilterHandle, DateFilterProps>(({ onFilterChan
   useImperativeHandle(ref, () => ({
     focusYear: () => {
       yearBtnRef.current?.focus();
-      setIsYearOpen(true);
     },
     focusMonth: () => {
       monthBtnRef.current?.focus();
-      setIsMonthOpen(true);
     },
   }));
+
+  const updateYears = (next: string[]) => {
+    setSelectedYears(next);
+    try {
+      if (typeof localStorage !== 'undefined') {
+        localStorage.setItem(STORAGE_YEARS_KEY, JSON.stringify(next));
+      }
+    } catch (_) {}
+    window.dispatchEvent(new CustomEvent('bpc_date_filter_sync', { detail: { years: next } }));
+  };
+
+  const updateMonths = (next: string[]) => {
+    setSelectedMonths(next);
+    try {
+      if (typeof localStorage !== 'undefined') {
+        localStorage.setItem(STORAGE_MONTHS_KEY, JSON.stringify(next));
+      }
+    } catch (_) {}
+    window.dispatchEvent(new CustomEvent('bpc_date_filter_sync', { detail: { months: next } }));
+  };
+
+  // Sync across tabs and other mounted DateFilter instances
+  useEffect(() => {
+    const handleSync = (e: any) => {
+      if (e?.detail) {
+        if (Array.isArray(e.detail.years)) {
+          setSelectedYears(prev => (areArraysEqual(prev, e.detail.years) ? prev : e.detail.years));
+        }
+        if (Array.isArray(e.detail.months)) {
+          setSelectedMonths(prev => (areArraysEqual(prev, e.detail.months) ? prev : e.detail.months));
+        }
+      }
+    };
+    const handleStorage = (e: StorageEvent) => {
+      if (e.key === STORAGE_YEARS_KEY && e.newValue) {
+        try {
+          const parsed = JSON.parse(e.newValue);
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            setSelectedYears(prev => (areArraysEqual(prev, parsed) ? prev : parsed));
+          }
+        } catch (_) {}
+      }
+      if (e.key === STORAGE_MONTHS_KEY && e.newValue) {
+        try {
+          const parsed = JSON.parse(e.newValue);
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            setSelectedMonths(prev => (areArraysEqual(prev, parsed) ? prev : parsed));
+          }
+        } catch (_) {}
+      }
+    };
+
+    window.addEventListener('bpc_date_filter_sync', handleSync);
+    window.addEventListener('storage', handleStorage);
+    return () => {
+      window.removeEventListener('bpc_date_filter_sync', handleSync);
+      window.removeEventListener('storage', handleStorage);
+    };
+  }, []);
 
   // Close popovers on click outside
   useEffect(() => {
@@ -125,34 +224,34 @@ const DateFilter = forwardRef<DateFilterHandle, DateFilterProps>(({ onFilterChan
   const toggleYear = (val: string) => {
     if (selectedYears.includes(val)) {
       if (selectedYears.length > 1) {
-        setSelectedYears(selectedYears.filter((y) => y !== val));
+        updateYears(selectedYears.filter((y) => y !== val));
       }
     } else {
-      setSelectedYears([...selectedYears, val]);
+      updateYears([...selectedYears, val]);
     }
   };
 
   const selectAllYears = () => {
-    setSelectedYears(yearOptions.map((y) => y.value));
+    updateYears(yearOptions.map((y) => y.value));
   };
 
   const clearYears = () => {
-    setSelectedYears(['This Year']);
+    updateYears(['This Year']);
   };
 
   // Month Handlers
   const toggleMonth = (val: string) => {
     if (val === 'All Months') {
       if (selectedMonths.includes('All Months')) {
-        setSelectedMonths(['This Month']);
+        updateMonths(['This Month']);
       } else {
-        setSelectedMonths(['All Months']);
+        updateMonths(['All Months']);
       }
       return;
     }
 
     if (val === 'This Month') {
-      setSelectedMonths(['This Month']);
+      updateMonths(['This Month']);
       return;
     }
 
@@ -165,20 +264,20 @@ const DateFilter = forwardRef<DateFilterHandle, DateFilterProps>(({ onFilterChan
     }
 
     if (nextMonths.length === 0) {
-      setSelectedMonths(['This Month']);
+      updateMonths(['This Month']);
     } else if (nextMonths.length === 12) {
-      setSelectedMonths(['All Months']);
+      updateMonths(['All Months']);
     } else {
-      setSelectedMonths(nextMonths);
+      updateMonths(nextMonths);
     }
   };
 
   const selectAllMonths = () => {
-    setSelectedMonths(['All Months']);
+    updateMonths(['All Months']);
   };
 
   const clearMonths = () => {
-    setSelectedMonths(['This Month']);
+    updateMonths(['This Month']);
   };
 
   // Label helpers
@@ -328,4 +427,3 @@ const DateFilter = forwardRef<DateFilterHandle, DateFilterProps>(({ onFilterChan
 });
 
 export default DateFilter;
-

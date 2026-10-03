@@ -1,12 +1,47 @@
 import { 
+  initBPCDatabase,
   initIndexedDB, 
   idbMemoryCache, 
+  bpcMemoryCache,
+  mapTableToBPCStore,
+  createCompany,
+  createWorkspace,
+  createSalesInvoice,
+  createPurchaseBill,
+  createStockItem,
+  createParty,
+  createDutyAndTax,
+  createCashbook,
+  createRecycleBinEntry,
+  updateCompany,
+  updateWorkspace,
+  updateSalesInvoice,
+  updatePurchaseBill,
+  updateStockItem,
+  updateParty,
+  updateDutyAndTax,
+  updateCashbook,
+  updateRecycleBinEntry,
+  deleteCompany,
+  deleteWorkspace,
+  deleteSalesInvoice,
+  deletePurchaseBill,
+  deleteStockItem,
+  deleteParty,
+  deleteDutyAndTax,
+  deleteCashbook,
+  deleteRecycleBinEntry,
+  moveToRecycleBin,
+  restoreFromRecycleBin,
   saveAllToIDB, 
   upsertToIDB, 
   deleteFromIDB, 
   IDBStoreName,
-  getAllFromIDB
+  getAllFromIDB,
+  BPCBusinessStoreName,
+  BPCSyncStoreName
 } from './idb';
+import './syncEngine';
 import { 
   DEFAULT_LICENSE, 
   DEFAULT_LICENSE_KEY, 
@@ -18,9 +53,9 @@ import { checkAndTriggerAutoBackup } from './backupEngine';
 
 // Auto-initialize IndexedDB on module load
 if (typeof window !== 'undefined') {
-  initIndexedDB()
+  initBPCDatabase()
     .then(() => initializeLicensesStore())
-    .catch((err) => console.warn('[IndexedDB] Init warning:', err));
+    .catch((err) => console.warn('[BPC_DB] Init warning:', err));
 }
 
 function generateUUID(): string {
@@ -128,6 +163,7 @@ function normalizeTableName(table: string): string {
 class OfflineQueryBuilder {
   rawTable: string;
   table: string;
+  bpcStore: BPCBusinessStoreName;
   filters: Array<(item: any) => boolean> = [];
   orderByField: string | null = null;
   orderAscending: boolean = true;
@@ -138,37 +174,140 @@ class OfflineQueryBuilder {
   constructor(table: string) {
     this.rawTable = table;
     this.table = normalizeTableName(table);
+    this.bpcStore = mapTableToBPCStore(table);
+  }
+
+  async executeStoreCreate(row: any) {
+    switch (this.bpcStore) {
+      case 'BPC_Companies':
+        return createCompany(row);
+      case 'BPC_Workspaces':
+        return createWorkspace(row);
+      case 'BPC_Sales_Invoices':
+        return createSalesInvoice(row);
+      case 'BPC_Purchase_Bills':
+        return createPurchaseBill(row);
+      case 'BPC_Stock_Items':
+        return createStockItem(row);
+      case 'BPC_Parties':
+        return createParty(row);
+      case 'BPC_Duties_And_Taxes':
+        return createDutyAndTax(row);
+      case 'BPC_Cashbooks':
+        return createCashbook(row);
+      case 'BPC_Recycle_Bin':
+        return createRecycleBinEntry(row);
+      default:
+        return upsertToIDB(this.bpcStore, row);
+    }
+  }
+
+  async executeStoreUpdate(id: string | number, row: any) {
+    switch (this.bpcStore) {
+      case 'BPC_Companies':
+        return updateCompany(id, row);
+      case 'BPC_Workspaces':
+        return updateWorkspace(id, row);
+      case 'BPC_Sales_Invoices':
+        return updateSalesInvoice(id, row);
+      case 'BPC_Purchase_Bills':
+        return updatePurchaseBill(id, row);
+      case 'BPC_Stock_Items':
+        return updateStockItem(id, row);
+      case 'BPC_Parties':
+        return updateParty(id, row);
+      case 'BPC_Duties_And_Taxes':
+        return updateDutyAndTax(id, row);
+      case 'BPC_Cashbooks':
+        return updateCashbook(id, row);
+      case 'BPC_Recycle_Bin':
+        return updateRecycleBinEntry(id, row);
+      default:
+        return upsertToIDB(this.bpcStore, row);
+    }
+  }
+
+  async executeStoreDelete(id: string | number) {
+    switch (this.bpcStore) {
+      case 'BPC_Companies':
+        return deleteCompany(id);
+      case 'BPC_Workspaces':
+        return deleteWorkspace(id);
+      case 'BPC_Sales_Invoices':
+        return deleteSalesInvoice(id);
+      case 'BPC_Purchase_Bills':
+        return deletePurchaseBill(id);
+      case 'BPC_Stock_Items':
+        return deleteStockItem(id);
+      case 'BPC_Parties':
+        return deleteParty(id);
+      case 'BPC_Duties_And_Taxes':
+        return deleteDutyAndTax(id);
+      case 'BPC_Cashbooks':
+        return deleteCashbook(id);
+      case 'BPC_Recycle_Bin':
+        return deleteRecycleBinEntry(id);
+      default:
+        return deleteFromIDB(this.bpcStore, String(id));
+    }
   }
 
   getItems(): any[] {
     let items: any[] = [];
-    if (idbMemoryCache[this.table] && Array.isArray(idbMemoryCache[this.table])) {
-      items = idbMemoryCache[this.table];
+    if (bpcMemoryCache[this.bpcStore] && Array.isArray(bpcMemoryCache[this.bpcStore])) {
+      items = bpcMemoryCache[this.bpcStore];
+    } else if (bpcMemoryCache[this.table] && Array.isArray(bpcMemoryCache[this.table])) {
+      items = bpcMemoryCache[this.table];
     } else {
-      const key = `local_db_${this.table}`;
-      const raw = typeof localStorage !== 'undefined' ? localStorage.getItem(key) : null;
+      const key = `local_db_${this.bpcStore}`;
+      const raw = typeof localStorage !== 'undefined' ? localStorage.getItem(key) || localStorage.getItem(`local_db_${this.table}`) : null;
       if (raw) {
         try {
           const parsed = JSON.parse(raw);
           if (Array.isArray(parsed)) {
             items = parsed;
-            idbMemoryCache[this.table] = parsed;
+            bpcMemoryCache[this.bpcStore] = parsed;
+            bpcMemoryCache[this.table] = parsed;
           }
         } catch {}
       }
     }
 
     if (!items || !Array.isArray(items)) items = [];
+
+    // If querying a business store, also include recycle bin items belonging to this store
+    // so queries for .eq('is_deleted', true) can find them, while .eq('is_deleted', false) filters them out.
+    if (this.bpcStore !== 'BPC_Recycle_Bin') {
+      const recycleItems = (bpcMemoryCache['BPC_Recycle_Bin'] || [])
+        .filter((rb: any) => rb && rb.originalStore === this.bpcStore)
+        .map((rb: any) => ({
+          ...(rb.originalData || rb),
+          id: rb.originalRecordId || rb.id,
+          is_deleted: true
+        }));
+
+      if (recycleItems.length > 0) {
+        return [...items, ...recycleItems];
+      }
+    }
+
     return items;
   }
 
   saveItems(items: any[]) {
-    idbMemoryCache[this.table] = items;
-    saveAllToIDB(this.table as IDBStoreName, items);
-    const key = `local_db_${this.table}`;
+    // Only active items (is_deleted !== true) belong in the active business store
+    const activeItems = this.bpcStore === 'BPC_Recycle_Bin'
+      ? items
+      : items.filter((it: any) => !it.is_deleted);
+
+    bpcMemoryCache[this.bpcStore] = activeItems;
+    bpcMemoryCache[this.table] = activeItems;
+    saveAllToIDB(this.bpcStore, activeItems);
+    const key = `local_db_${this.bpcStore}`;
     try {
       if (typeof localStorage !== 'undefined') {
-        localStorage.setItem(key, JSON.stringify(items));
+        localStorage.setItem(key, JSON.stringify(activeItems));
+        localStorage.setItem(`local_db_${this.table}`, JSON.stringify(activeItems));
       }
     } catch {}
   }
@@ -365,9 +504,9 @@ class OfflineQueryBuilder {
         items.push(newRow);
         inserted.push(newRow);
 
-        // Explicitly persist record directly to IndexedDB
-        upsertToIDB(this.table as IDBStoreName, newRow).catch((err) => {
-          console.warn(`[IDB] Direct record persist warning for ${this.table}:`, err);
+        // Explicitly persist record directly into BPC store and enqueue sync
+        this.executeStoreCreate(newRow).catch((err) => {
+          console.warn(`[BPC_DB] Direct store create warning for ${this.bpcStore}:`, err);
         });
       }
       this.saveItems(items);
@@ -400,10 +539,22 @@ class OfflineQueryBuilder {
           const updated = { ...item, ...payload };
           updatedItems.push(updated);
 
-          // Explicitly persist updated record directly to IndexedDB
-          upsertToIDB(this.table as IDBStoreName, updated).catch((err) => {
-            console.warn(`[IDB] Direct record update persist warning for ${this.table}:`, err);
-          });
+          if (payload.is_deleted === true && this.bpcStore !== 'BPC_Recycle_Bin' && this.bpcStore !== 'BPC_Settings_Preferences') {
+            // Delete / move to recycle bin
+            moveToRecycleBin(this.bpcStore as BPCSyncStoreName, item.id).catch((err) => {
+              console.warn(`[BPC_DB] moveToRecycleBin warning for ${this.bpcStore}:`, err);
+            });
+          } else if (payload.is_deleted === false && this.bpcStore !== 'BPC_Recycle_Bin' && this.bpcStore !== 'BPC_Settings_Preferences') {
+            // Restore from recycle bin
+            restoreFromRecycleBin(item.id).catch((err) => {
+              console.warn(`[BPC_DB] restoreFromRecycleBin warning for ${this.bpcStore}:`, err);
+            });
+          } else {
+            // Normal update: persist updated record directly into BPC store and enqueue sync
+            this.executeStoreUpdate(updated.id, updated).catch((err) => {
+              console.warn(`[BPC_DB] Direct store update warning for ${this.bpcStore}:`, err);
+            });
+          }
 
           return updated;
         }
@@ -438,6 +589,9 @@ class OfflineQueryBuilder {
           items[index] = { ...items[index], ...p };
           itemToSave = items[index];
           upserted.push(items[index]);
+          this.executeStoreUpdate(itemToSave.id, itemToSave).catch((err) => {
+            console.warn(`[BPC_DB] Direct store upsert update warning for ${this.bpcStore}:`, err);
+          });
         } else {
           const itemId = (p.id && p.id !== 'undefined' && p.id !== 'null') ? p.id : generateUUID();
           itemToSave = {
@@ -448,12 +602,10 @@ class OfflineQueryBuilder {
           };
           items.push(itemToSave);
           upserted.push(itemToSave);
+          this.executeStoreCreate(itemToSave).catch((err) => {
+            console.warn(`[BPC_DB] Direct store upsert create warning for ${this.bpcStore}:`, err);
+          });
         }
-
-        // Explicitly persist upserted record directly to IndexedDB
-        upsertToIDB(this.table as IDBStoreName, itemToSave).catch((err) => {
-          console.warn(`[IDB] Direct record upsert persist warning for ${this.table}:`, err);
-        });
       }
       this.saveItems(items);
 
@@ -484,9 +636,9 @@ class OfflineQueryBuilder {
           remaining.push(item);
         } else {
           deletedCount++;
-          // Explicitly delete record from IndexedDB store
-          deleteFromIDB(this.table as IDBStoreName, item.id).catch((err) => {
-            console.warn(`[IDB] Direct record delete warning for ${this.table}:`, err);
+          // Explicitly delete record from BPC store and enqueue sync
+          this.executeStoreDelete(item.id).catch((err) => {
+            console.warn(`[BPC_DB] Direct store delete warning for ${this.bpcStore}:`, err);
           });
         }
       }

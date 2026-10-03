@@ -56,7 +56,7 @@ const Bills = () => {
     }
   }, [loading, bills, location.state]);
   
-  const [headerFocusIdx, setHeaderFocusIdx] = useState<number | null>(0); 
+  const [headerFocusIdx, setHeaderFocusIdx] = useState<number | null>(null); 
   const [selectedRowIdx, setSelectedRowIdx] = useState<number | null>(null);
   const [lastShiftNTime, setLastShiftNTime] = useState(0);
 

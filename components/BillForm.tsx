@@ -212,7 +212,7 @@ const BillForm: React.FC<BillFormProps> = ({ initialData, onSubmit, onCancel, fo
         discountAmount = Math.min(discountAmount, baseAmount);
         
         const taxableVal = baseAmount - discountAmount;
-        const gstAmt = currentGstEnabled ? taxableVal * (t / 100) : 0;
+        const gstAmt = (currentGstEnabled || t > 0) ? taxableVal * (t / 100) : 0;
         const itemSubtotal = taxableVal + gstAmt; 
         
         taxable += taxableVal;
@@ -223,13 +223,16 @@ const BillForm: React.FC<BillFormProps> = ({ initialData, onSubmit, onCancel, fo
       state.items = updatedItems;
     }
 
+    const hasAnyGstItem = (state.items || []).some((item: any) => parseFloat(item.tax_rate) > 0);
+    const effectiveGstActive = currentGstEnabled || hasAnyGstItem;
+
     // Dynamic injection/correction of CGST, SGST, IGST in duties_and_taxes if they are missing
     let duties = [...(state.duties_and_taxes || [])];
     
     // Always filter out existing CGST, SGST, IGST to prevent double calculation or duplicate items
     duties = duties.filter((d: any) => !['CGST', 'SGST', 'IGST'].includes(d.name));
 
-    if (currentGstEnabled && appSettings.gstEnabled) {
+    if (effectiveGstActive) {
       // Determine required GST ledgers based on state.gst_type (default to Intra-State mappings if not set)
       const currentGstType = state.gst_type || (appSettings.gstType === 'IGST' ? 'Inter-State' : 'Intra-State');
       const requiredNames = currentGstType === 'Inter-State' ? ['IGST'] : ['CGST', 'SGST'];
@@ -252,16 +255,13 @@ const BillForm: React.FC<BillFormProps> = ({ initialData, onSubmit, onCancel, fo
     state.duties_and_taxes = duties;
 
     let runningTotal = taxable;
-    // If GST is enabled locally, but NOT globally, add gst directly to runningTotal
-    if (currentGstEnabled && !appSettings.gstEnabled) {
-      runningTotal += gst;
-    }
+    let gstDutiesAdded = 0;
 
     const updatedDuties = (state.duties_and_taxes || []).map((d: any) => {
       let calcAmt = d.amount || 0;
       if (sourceDutyId === d.id) {
         calcAmt = parseNumber(sourceVal);
-      } else if (currentGstEnabled && appSettings.gstEnabled && (d.name === 'CGST' || d.name === 'SGST' || d.name === 'IGST')) {
+      } else if (effectiveGstActive && (d.name === 'CGST' || d.name === 'SGST' || d.name === 'IGST')) {
           const currentGstType = state.gst_type || (appSettings.gstType === 'IGST' ? 'Inter-State' : 'Intra-State');
           if (currentGstType === 'Intra-State') {
               if (d.name === 'CGST' || d.name === 'SGST') calcAmt = autoGstSum / 2;
@@ -281,9 +281,17 @@ const BillForm: React.FC<BillFormProps> = ({ initialData, onSubmit, onCancel, fo
         calcAmt = -calcAmt;
       }
 
+      if (['CGST', 'SGST', 'IGST'].includes((d.name || '').toUpperCase())) {
+        gstDutiesAdded += calcAmt;
+      }
+
       runningTotal += calcAmt;
       return { ...d, amount: calcAmt };
     });
+
+    if (effectiveGstActive && gstDutiesAdded === 0 && gst > 0) {
+      runningTotal += gst;
+    }
 
     const rounded = Math.round(runningTotal);
     const ro = parseFloat((rounded - runningTotal).toFixed(2));
@@ -351,7 +359,7 @@ const BillForm: React.FC<BillFormProps> = ({ initialData, onSubmit, onCancel, fo
         normalized.items_raw?.duties_and_taxes?.forEach((d:any) => { if(d.amount !== 0) manualOverrides.current.add(d.id); });
         
         const hasGstInSavedItems = normalized.items?.some((it: any) => parseFloat(it.tax_rate) > 0) || normalized.total_gst > 0;
-        const isGst = appSettings.gstEnabled && (hasGstInSavedItems || normalized.total_gst > 0);
+        const isGst = (hasGstInSavedItems || normalized.total_gst > 0) || appSettings.gstEnabled;
         setIsGstEnabled(isGst);
 
         // Map old or saved gst_type if they are in older formats like 'CGST - SGST' or 'IGST' to the new 'Intra-State' / 'Inter-State' modes
@@ -463,7 +471,7 @@ const BillForm: React.FC<BillFormProps> = ({ initialData, onSubmit, onCancel, fo
           total_without_gst: formData.total_without_gst,
           total_gst: formData.total_gst,
           grand_total: formData.grand_total,
-          status: formData.status,
+          status: (Array.isArray(formData.payment_details) && formData.payment_details.length > 0 && formData.payment_details.some((p: any) => Number(p?.payment_amount) > 0)) ? 'Paid' : 'Pending',
           is_deleted: false,
           description: formData.description,
           round_off: formData.round_off,
