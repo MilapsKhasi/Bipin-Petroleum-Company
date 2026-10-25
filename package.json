@@ -47,7 +47,9 @@
           ]
         }
       ],
-      "artifactName": "${productName}-Setup-${version}.${ext}"
+      "artifactName": "${productName}-Setup-${version}.${ext}",
+
+      "icon": "public/bpc_logo.ico"
     },
     "nsis": {
       "oneClick": false,
