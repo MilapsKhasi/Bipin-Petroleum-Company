@@ -38,7 +38,7 @@ const SalesInvoiceForm: React.FC<SalesInvoiceFormProps> = ({ initialData, onSubm
     auto_round_off: true,
     round_off: 0, 
     grand_total: 0, 
-    status: 'Pending',
+    status: 'Paid',
     description: '',
     payment_details: null
   });
@@ -460,7 +460,7 @@ const SalesInvoiceForm: React.FC<SalesInvoiceFormProps> = ({ initialData, onSubm
           total_without_gst: formData.total_without_gst,
           total_gst: formData.total_gst,
           grand_total: formData.grand_total,
-          status: (Array.isArray(formData.payment_details) && formData.payment_details.length > 0 && formData.payment_details.some((p: any) => Number(p?.payment_amount) > 0)) ? 'Paid' : 'Pending',
+          status: formData.status,
           is_deleted: false,
           description: formData.description,
           round_off: formData.round_off,

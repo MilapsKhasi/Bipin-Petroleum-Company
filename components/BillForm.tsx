@@ -471,7 +471,7 @@ const BillForm: React.FC<BillFormProps> = ({ initialData, onSubmit, onCancel, fo
           total_without_gst: formData.total_without_gst,
           total_gst: formData.total_gst,
           grand_total: formData.grand_total,
-          status: (Array.isArray(formData.payment_details) && formData.payment_details.length > 0 && formData.payment_details.some((p: any) => Number(p?.payment_amount) > 0)) ? 'Paid' : 'Pending',
+          status: formData.status,
           is_deleted: false,
           description: formData.description,
           round_off: formData.round_off,
