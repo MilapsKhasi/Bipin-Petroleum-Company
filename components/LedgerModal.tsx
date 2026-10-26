@@ -18,8 +18,6 @@ const LedgerModal: React.FC<LedgerModalProps> = ({ isOpen, onClose, party, type 
   const printRef = useRef<HTMLDivElement>(null);
 
   const handlePrint = () => {
-    if (!printRef.current) return;
-    const htmlContent = printRef.current.outerHTML;
     const printWindow = window.open('', '_blank');
     if (printWindow) {
       printWindow.document.write(`
@@ -31,49 +29,140 @@ const LedgerModal: React.FC<LedgerModalProps> = ({ isOpen, onClose, party, type 
             <script src="https://cdn.tailwindcss.com"></script>
             <style>
               @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
-              
               * {
                 -webkit-print-color-adjust: exact !important;
                 print-color-adjust: exact !important;
                 box-sizing: border-box;
               }
-              
               body {
-                font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+                font-family: 'Inter', sans-serif;
                 margin: 0;
-                padding: 0;
+                padding: 20px;
                 background-color: #ffffff;
                 color: #000000;
               }
-
               @page {
                 size: A4 portrait;
+                margin: 10mm;
               }
-
               @media print {
-                body {
-                  background: white !important;
-                  color: black !important;
-                }
+                @page { size: auto; margin: 10mm; }
               }
             </style>
           </head>
-          <body class="p-4 bg-white">
-            <div class="max-w-[850px] mx-auto bg-white">
-              ${htmlContent}
+          <body class="bg-white">
+            <div class="max-w-[850px] mx-auto bg-white p-6">
+              
+              <!-- Company Logo Centered -->
+              <div class="flex justify-center mb-3">
+              </div>
+
+              <!-- Company Name Centered -->
+              <h1 class="text-center text-xl font-bold" style="color: #1e3a8a;">
+                ${companyInfo?.name || 'Bipin Petroleum Co.'}
+              </h1>
+
+              <!-- Company Address Centered -->
+              <p class="text-center text-xs text-gray-600 mt-1 max-w-lg mx-auto">
+                ${companyInfo?.address || '56, Digvijay Plot ,Near Oshwal Hospital, Jamnagar 361005, Gujarat'}
+              </p>
+
+              <!-- Thin Horizontal Divider -->
+              <hr class="my-4 border-t border-gray-300" />
+
+              <!-- Selected Party Name -->
+              <h2 class="text-center text-lg font-semibold text-gray-900 mt-2">
+                ${party?.name || 'Company Name'}
+              </h2>
+
+              <!-- Ledger Account Title -->
+              <p class="text-center text-sm font-medium text-gray-700 mt-0.5">
+                Ledger Account
+              </p>
+
+              <!-- Date Range -->
+              <p class="text-center text-xs text-gray-600 mt-1 mb-6">
+                From - ${fromDateFormatted} to - ${toDateFormatted}
+              </p>
+
+              <!-- Ledger Table -->
+              <table class="w-full border-collapse text-sm">
+                <thead>
+                  <tr style="background-color: #0a192f; color: #ffffff;">
+                    <th class="py-2.5 px-3 text-left font-semibold text-xs uppercase tracking-wider w-16">Sr No</th>
+                    <th class="py-2.5 px-3 text-left font-semibold text-xs uppercase tracking-wider w-28">Date</th>
+                    <th class="py-2.5 px-3 text-left font-semibold text-xs uppercase tracking-wider">Description</th>
+                    <th class="py-2.5 px-3 text-left font-semibold text-xs uppercase tracking-wider w-32">Ref No</th>
+                    <th class="py-2.5 px-3 text-right font-semibold text-xs uppercase tracking-wider w-28">Debit</th>
+                    <th class="py-2.5 px-3 text-right font-semibold text-xs uppercase tracking-wider w-28">Credit</th>
+                    <th class="py-2.5 px-3 text-right font-semibold text-xs uppercase tracking-wider w-28">Balance</th>
+                  </tr>
+                </thead>
+                <tbody class="divide-y divide-gray-200">
+                  ${ledgerRows.length > 0
+          ? ledgerRows
+            .map(
+              (row, index) => `
+                        <tr>
+                          <td class="py-2.5 px-3 text-left text-gray-800">${index + 1}</td>
+                          <td class="py-2.5 px-3 text-left text-gray-800">${row.date || ''}</td>
+                          <td class="py-2.5 px-3 text-left text-gray-800">${row.transaction || ''}</td>
+                          <td class="py-2.5 px-3 text-left text-gray-800">${row.reference || '-'}</td>
+                          <td class="py-2.5 px-3 text-right text-gray-800">${row.debit ? Number(row.debit).toFixed(2) : ''}</td>
+                          <td class="py-2.5 px-3 text-right text-gray-800">${row.credit ? Number(row.credit).toFixed(2) : ''}</td>
+                          <td class="py-2.5 px-3 text-right text-gray-800">${Number(row.balance || 0).toFixed(2)}</td>
+                        </tr>
+                      `
+            )
+            .join('')
+          : `<tr><td colspan="7" class="text-center py-6 text-gray-500">No ledger entries found for the selected period.</td></tr>`
+        }
+                </tbody>
+                <tfoot>
+                  <tr class="border-t border-b border-gray-300 font-semibold bg-gray-50">
+                    <td colspan="4" class="py-2.5 px-3 text-right text-gray-900"></td>
+                    <td class="py-2.5 px-3 text-right text-gray-900">
+                      ${ledgerRows.reduce((sum, r) => sum + (Number(r.debit) || 0), 0).toFixed(2)}
+                    </td>
+                    <td class="py-2.5 px-3 text-right text-gray-900">
+                      ${ledgerRows.reduce((sum, r) => sum + (Number(r.credit) || 0), 0).toFixed(2)}
+                    </td>
+                    <td class="py-2.5 px-3"></td>
+                  </tr>
+                  <tr>
+                    <td colspan="2" class="py-3 px-3"></td>
+                    <td class="py-3 px-3 font-semibold text-gray-900">Net Closing Balance</td>
+                    <td></td>
+                    <td colspan="2" class="py-3 px-3 text-right font-semibold text-gray-900">
+                      ${(() => {
+          const net = ledgerRows.length > 0 ? ledgerRows[ledgerRows.length - 1].balance : 0;
+          return `${Math.abs(net).toFixed(2)} ${net >= 0 ? 'Dr' : 'Cr'}`;
+        })()}
+                    </td>
+                    <td class="py-3 px-3"></td>
+                  </tr>
+                </tfoot>
+              </table>
+
             </div>
             <script>
               window.addEventListener('load', () => {
                 setTimeout(() => {
                   window.print();
                   window.close();
-                }, 600);
+                }, 500);
               });
             </script>
           </body>
         </html>
       `);
       printWindow.document.close();
+      printWindow.focus();
+
+      setTimeout(() => {
+        printWindow.print();
+        printWindow.close();
+      }, 500);
     }
   };
 
@@ -81,7 +170,6 @@ const LedgerModal: React.FC<LedgerModalProps> = ({ isOpen, onClose, party, type 
     if (!party || !cid) return;
     setLoading(true);
     try {
-      // Fetch company details
       const { data: company } = await supabase
         .from('companies')
         .select('*')
@@ -96,7 +184,7 @@ const LedgerModal: React.FC<LedgerModalProps> = ({ isOpen, onClose, party, type 
         .select('*')
         .eq('company_id', cid)
         .eq('is_deleted', false);
-      
+
       const { data: salesData } = await supabase
         .from('sales_invoices')
         .select('*')
@@ -108,7 +196,7 @@ const LedgerModal: React.FC<LedgerModalProps> = ({ isOpen, onClose, party, type 
         ...(salesData || []).map((v: any) => ({ ...normalizeBill(v), source: 'sales_invoices' }))
       ];
 
-      const partyTransactions = allVouchers.filter((v: any) => 
+      const partyTransactions = allVouchers.filter((v: any) =>
         v.vendor_name?.toLowerCase().trim() === party.name?.toLowerCase().trim()
       );
 
@@ -127,7 +215,7 @@ const LedgerModal: React.FC<LedgerModalProps> = ({ isOpen, onClose, party, type 
   const { ledgerRows, finalBalance } = useMemo(() => {
     if (!party) return { ledgerRows: [], finalBalance: 0 };
     const rows: any[] = [];
-    
+
     const isDebtor = party.party_type === 'customer' || party.is_customer === true || type === 'customer';
     const openingBalanceVal = Number(party.balance) || 0;
     let runningBalance = isDebtor ? openingBalanceVal : -openingBalanceVal;
@@ -146,11 +234,9 @@ const LedgerModal: React.FC<LedgerModalProps> = ({ isOpen, onClose, party, type 
       const amount = Number(t.grand_total) || 0;
       const isSale = t.type === 'Sale';
       const isPaymentVoucher = t.items_raw?.is_payment_voucher === true;
-      
-      // Bill/Invoice Row
+
       if (!isPaymentVoucher) {
         if (isSale) {
-          // Sales: Debits the party (Sales Invoice)
           runningBalance += amount;
           rows.push({
             date: t.date,
@@ -161,7 +247,6 @@ const LedgerModal: React.FC<LedgerModalProps> = ({ isOpen, onClose, party, type 
             balance: runningBalance
           });
         } else {
-          // Purchase: Credits the party (Purchase Bill)
           runningBalance -= amount;
           rows.push({
             date: t.date,
@@ -174,7 +259,6 @@ const LedgerModal: React.FC<LedgerModalProps> = ({ isOpen, onClose, party, type 
         }
       }
 
-      // Payment/Receipt Row (only for actual Payment Vouchers)
       if (isPaymentVoucher) {
         const pDetailsRaw = t.items_raw?.payment_details;
         const payments = Array.isArray(pDetailsRaw) ? pDetailsRaw : (pDetailsRaw ? [pDetailsRaw] : [{
@@ -188,7 +272,6 @@ const LedgerModal: React.FC<LedgerModalProps> = ({ isOpen, onClose, party, type 
           const pDate = p.payment_date || t.date;
 
           if (isSale) {
-            // Receipt: Credits the party (Receipt)
             runningBalance -= pAmount;
             rows.push({
               date: pDate,
@@ -199,7 +282,6 @@ const LedgerModal: React.FC<LedgerModalProps> = ({ isOpen, onClose, party, type 
               balance: runningBalance
             });
           } else {
-            // Payment: Debits the party (Payment)
             runningBalance += pAmount;
             rows.push({
               date: pDate,
@@ -224,7 +306,6 @@ const LedgerModal: React.FC<LedgerModalProps> = ({ isOpen, onClose, party, type 
     }), { debit: 0, credit: 0 });
   }, [ledgerRows]);
 
-  // Dynamic Date Formatting for Indian Style Ledger
   const formatMmmYyDate = (dateStr: string) => {
     if (!dateStr) return '';
     const parts = dateStr.split('-');
@@ -261,7 +342,6 @@ const LedgerModal: React.FC<LedgerModalProps> = ({ isOpen, onClose, party, type 
     return formatMmmYyDate(maxDate.toISOString().split('T')[0]);
   }, [transactions]);
 
-  // Generate exactly 25 rows for the printed ledger
   const printRows = useMemo(() => {
     const list = [...ledgerRows];
     while (list.length < 25) {
@@ -302,7 +382,7 @@ const LedgerModal: React.FC<LedgerModalProps> = ({ isOpen, onClose, party, type 
               </div>
             </div>
             <div className="flex items-center space-x-2 sm:space-x-3">
-              <button 
+              <button
                 onClick={handlePrint}
                 className="flex items-center space-x-2 px-4 py-2 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded text-xs font-medium text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700 transition-none cursor-pointer"
               >
@@ -316,7 +396,7 @@ const LedgerModal: React.FC<LedgerModalProps> = ({ isOpen, onClose, party, type 
           </div>
 
           {/* Stats Bar */}
-          <div className="grid grid-cols-1 sm:grid-cols-3 divide-y sm:divide-y-0 sm:divide-x divide-slate-100 dark:divide-slate-800 border-b border-slate-100 dark:border-slate-800 bg-white dark:bg-slate-900 shrink-0">
+          <div className="p-10 overflow-y-auto print:overflow-visible print:p-6 bg-white text-black">
             <div className="p-4 sm:p-6 flex flex-col items-center justify-center">
               <p className="text-[9px] sm:text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-1 sm:mb-2">Total Debit</p>
               <p className="text-xl sm:text-2xl font-mono font-bold text-red-500">{formatCurrency(totals.debit)}</p>
@@ -374,7 +454,7 @@ const LedgerModal: React.FC<LedgerModalProps> = ({ isOpen, onClose, party, type 
                             <span className="font-semibold text-slate-850 dark:text-slate-200">{row.transaction}</span>
                           </div>
                         </td>
-                        <td className="p-4 text-left font-mono font-bold text-slate-600 dark:text-slate-400">{row.reference || '-'}</td>
+                        <td className="p-4 text-left font-bold text-slate-600 dark:text-slate-400">{row.reference || '-'}</td>
                         <td className="p-4 text-right font-mono font-bold text-red-500/80">{row.debit > 0 ? formatCurrency(row.debit, false) : '-'}</td>
                         <td className="p-4 text-right font-mono font-bold text-emerald-500/80">{row.credit > 0 ? formatCurrency(row.credit, false) : '-'}</td>
                         <td className="p-4 text-right font-mono font-bold text-slate-900 dark:text-white bg-slate-50/30 dark:bg-slate-800/30">
@@ -395,8 +475,8 @@ const LedgerModal: React.FC<LedgerModalProps> = ({ isOpen, onClose, party, type 
           <div className="px-4 sm:px-8 py-4 border-t border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/30 flex flex-col sm:flex-row justify-between items-center shrink-0 gap-2">
             <p className="text-[9px] sm:text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest">Generated on {new Date().toLocaleString()}</p>
             <div className="flex items-center space-x-2">
-               <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></div>
-               <span className="text-[9px] sm:text-[10px] font-bold text-slate-600 dark:text-slate-400 uppercase tracking-widest">Live Ledger Sync Active</span>
+              <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></div>
+              <span className="text-[9px] sm:text-[10px] font-bold text-slate-600 dark:text-slate-400 uppercase tracking-widest">Live Ledger Sync Active</span>
             </div>
           </div>
         </div>
@@ -404,7 +484,8 @@ const LedgerModal: React.FC<LedgerModalProps> = ({ isOpen, onClose, party, type 
 
       {/* EXACT ACCURATE PRINT LAYOUT (print:block hidden) */}
       <div className="hidden print:block fixed inset-0 bg-white text-black z-[99999] p-0 m-0 font-sans leading-normal">
-        <style dangerouslySetInnerHTML={{ __html: `
+        <style dangerouslySetInnerHTML={{
+          __html: `
           @media print {
             body {
               background: white !important;
@@ -422,11 +503,16 @@ const LedgerModal: React.FC<LedgerModalProps> = ({ isOpen, onClose, party, type 
             }
             @page {
               size: A4 portrait;
-              margin: 1.2cm;
+              margin: 0;
+            }
+            @media print {
+              body {
+              zoom: 0.89;
             }
           }
+          }
         `}} />
-        
+
         {/* Ledger Outer border Box */}
         <div ref={printRef} className="border-2 border-black w-full min-h-[265mm] flex flex-col justify-between p-0 m-0 text-black">
           <div>
@@ -459,11 +545,11 @@ const LedgerModal: React.FC<LedgerModalProps> = ({ isOpen, onClose, party, type 
               </div>
               <div className="col-span-5 p-3 space-y-1.5 uppercase">
                 <div className="flex justify-between">
-                  <span>FROM DATE</span> 
+                  <span>FROM DATE</span>
                   <span className="font-extrabold mr-12">{fromDateFormatted}</span>
                 </div>
                 <div className="flex justify-between">
-                  <span>TO DATE</span> 
+                  <span>TO DATE</span>
                   <span className="font-extrabold mr-12">{toDateFormatted}</span>
                 </div>
               </div>
@@ -486,7 +572,7 @@ const LedgerModal: React.FC<LedgerModalProps> = ({ isOpen, onClose, party, type 
                 {printRows.map((row, idx) => {
                   const srNo = idx + 1;
                   const isPlaceholder = row.isPlaceholder;
-                  
+
                   return (
                     <tr key={idx} className="border-b border-gray-300 h-[7.5mm]">
                       <td className="p-1 border-r-2 border-black text-center font-bold">{srNo}</td>
@@ -496,7 +582,7 @@ const LedgerModal: React.FC<LedgerModalProps> = ({ isOpen, onClose, party, type 
                       <td className="p-1 border-r-2 border-black px-2 font-semibold">
                         {isPlaceholder ? '' : row.transaction}
                       </td>
-                      <td className="p-1 border-r-2 border-black px-2 font-mono font-bold">
+                      <td className="p-1 border-r-2 border-black px-2 font-bold">
                         {isPlaceholder ? '' : (row.reference || '-')}
                       </td>
                       <td className="p-1 border-r-2 border-black text-right font-bold px-2">
